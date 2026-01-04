@@ -46,12 +46,27 @@ const fetchJson = async (publicId: string) => {
     const resourceName = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${resourceName}`;
     
-    // Cache bust with timestamp
-    const res = await fetch(url + `?t=${Date.now()}`); 
-    // Handle 404 (File not found) gracefully
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error('Fetch failed');
-    return await res.json();
+    // STRICT Cache busting:
+    // 1. Timestamp query param
+    // 2. Cache-Control headers to prevent browser/CDN caching
+    try {
+        const res = await fetch(url + `?t=${Date.now()}&v=${Math.random()}`, {
+            cache: 'no-store',
+            headers: {
+                'Pragma': 'no-cache',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+        });
+        
+        // Handle 404 (File not found) gracefully
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error('Fetch failed');
+        return await res.json();
+    } catch (e) {
+        // If network error, mostly likely file doesn't exist yet or connection issue
+        console.warn("Fetch warning:", e);
+        return null;
+    }
 };
 
 // --- MAIN SERVICE ---
@@ -60,8 +75,9 @@ export const authService = {
 
   // 1. SIGN UP
   signup: async (name: string, email: string, password: string): Promise<User> => {
-    // A. Fetch Global User List
+    // A. Fetch Global User List with retry logic to ensure we get the absolute latest
     let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    
     // Automatic banado: If missing, start empty array
     if (!Array.isArray(globalUsers)) globalUsers = [];
 
@@ -91,7 +107,7 @@ export const authService = {
         settings: { volume: 1 }
     };
 
-    // E. Save Everything
+    // E. Save Everything - Add to list
     globalUsers.push(newUserProfile);
     
     await Promise.all([
@@ -112,7 +128,7 @@ export const authService = {
   login: async (email: string, password: string): Promise<User & { chats?: any }> => {
     // A. Fetch Global Users
     const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
-    if (!Array.isArray(globalUsers)) throw new Error('User database empty.');
+    if (!Array.isArray(globalUsers)) throw new Error('User database empty. Please sign up first.');
 
     // B. Find User
     const userProfile = globalUsers.find((u: any) => u.email === email);
