@@ -1,8 +1,10 @@
-import { User, FriendRequest, Song } from '../types';
+import { User, FriendRequest, Song, UserPlaylist, ChatMessage } from '../types';
 
 const CLOUD_NAME = 'dj5hhott5';
 const UPLOAD_PRESET = 'My smallest server';
-const GLOBAL_INDEX_ID = 'vibestream_users_index';
+
+// The "Mega File" that holds all users, friends, and chats
+const GLOBAL_USERS_FILE = 'vibestream_users'; 
 
 // Simple Hashing
 export const hashPassword = async (password: string): Promise<string> => {
@@ -12,13 +14,14 @@ export const hashPassword = async (password: string): Promise<string> => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-const generateUserFilename = (email: string) => {
-  return `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+const generateDataFilename = (email: string) => {
+  // Sanitize email to be a valid filename
+  return `data_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
 };
 
-// Helper to save any JSON to Cloudinary
+// --- API HELPERS ---
+
 const uploadJson = async (data: any, publicId: string) => {
-    // For raw files, explicitly include the extension in the public_id
     const fullPublicId = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const file = new File([blob], fullPublicId, { type: 'application/json' });
@@ -28,155 +31,227 @@ const uploadJson = async (data: any, publicId: string) => {
     formData.append('upload_preset', UPLOAD_PRESET);
     formData.append('public_id', fullPublicId);
     
-    // Removing 'overwrite' and 'resource_type' from body to reduce Bad Request risk on unsigned presets
-    
     const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
       method: 'POST',
       body: formData,
     });
 
     if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.error("Cloudinary Error:", errBody);
-        throw new Error(`Upload failed: ${errBody.error?.message || res.statusText}`);
+        throw new Error(`Upload failed: ${res.statusText}`);
     }
+    return await res.json();
 };
 
-// Helper to fetch any JSON
 const fetchJson = async (publicId: string) => {
-    // Ensure we fetch the .json version
     const resourceName = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${resourceName}`;
     
-    const res = await fetch(url + `?t=${Date.now()}`); // Bust cache
+    // Cache bust with timestamp
+    const res = await fetch(url + `?t=${Date.now()}`); 
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('Fetch failed');
     return await res.json();
 };
 
+// --- MAIN SERVICE ---
+
 export const authService = {
-  // 1. Sign Up (with Global Index update)
+
+  // 1. SIGN UP
   signup: async (name: string, email: string, password: string): Promise<User> => {
-    // Check if user exists first by trying to fetch their file
-    const existing = await fetchJson(generateUserFilename(email));
-    if (existing) throw new Error('User already exists.');
+    // A. Fetch Global User List
+    let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    if (!Array.isArray(globalUsers)) globalUsers = [];
+
+    // B. Check duplicates
+    if (globalUsers.find((u: any) => u.email === email)) {
+        throw new Error('User already exists.');
+    }
 
     const passwordHash = await hashPassword(password);
-    
-    const user: User = {
-      name,
-      email,
-      passwordHash,
-      playlists: [],
-      friends: [],
-      friendRequests: [],
-      currentActivity: { song: null, timestamp: Date.now(), status: 'online' }
+
+    // C. Create Public Profile Object (Stored in vibestream_users.json)
+    const newUserProfile = {
+        name,
+        email,
+        passwordHash,
+        image: '',
+        friends: [],
+        friendRequests: [],
+        chats: [] // Store chats globally for simplicity in this architecture
     };
 
-    // Upload User File
-    await uploadJson(user, generateUserFilename(email));
+    // D. Create Private Data Object (Stored in data_{email}.json)
+    const newUserData = {
+        playlists: [],
+        likedSongs: [],
+        history: [],
+        settings: { volume: 1 }
+    };
 
-    // Update Global Index (for Search)
-    // Note: In production, this is a race condition. For this demo, it's acceptable.
-    try {
-        let index = await fetchJson(GLOBAL_INDEX_ID) || [];
-        if (!Array.isArray(index)) index = [];
-        index.push({ name, email, image: '' });
-        await uploadJson(index, GLOBAL_INDEX_ID);
-    } catch (e) {
-        console.warn("Failed to update global index", e);
-    }
-
-    return user;
-  },
-
-  // 2. Login
-  login: async (email: string, password: string): Promise<User> => {
-    const userData: User = await fetchJson(generateUserFilename(email));
-    if (!userData) throw new Error('User not found.');
-
-    const inputHash = await hashPassword(password);
-    if (userData.passwordHash !== inputHash) throw new Error('Invalid password.');
-
-    return userData;
-  },
-
-  // 3. Sync User (General Update)
-  syncUser: async (user: User): Promise<void> => {
-    await uploadJson(user, generateUserFilename(user.email));
+    // E. Save Everything
+    globalUsers.push(newUserProfile);
     
-    // Also update index image if changed
-    if (user.image) {
-         try {
-            let index = await fetchJson(GLOBAL_INDEX_ID) || [];
-            const idx = index.findIndex((u: any) => u.email === user.email);
-            if (idx !== -1) {
-                index[idx].image = user.image;
-                index[idx].name = user.name;
-                await uploadJson(index, GLOBAL_INDEX_ID);
-            }
-        } catch (e) { console.warn("Index update failed", e); }
-    }
+    await Promise.all([
+        uploadJson(globalUsers, GLOBAL_USERS_FILE),
+        uploadJson(newUserData, generateDataFilename(email))
+    ]);
+
+    // F. Return merged User object for the app state
+    return {
+        ...newUserProfile,
+        playlists: newUserData.playlists,
+        // We attach these temporarily to the User object so the store can read them, 
+        // even though they aren't strictly part of the 'User' type in the DB
+        likedSongs: newUserData.likedSongs, 
+        history: newUserData.history
+    } as any;
   },
 
-  // 4. Search Users
-  searchUsers: async (query: string): Promise<{ name: string, email: string, image?: string }[]> => {
-      const index = await fetchJson(GLOBAL_INDEX_ID);
-      if (!index || !Array.isArray(index)) return [];
+  // 2. LOGIN
+  login: async (email: string, password: string): Promise<User> => {
+    // A. Fetch Global Users
+    const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    if (!Array.isArray(globalUsers)) throw new Error('User database empty.');
+
+    // B. Find User
+    const userProfile = globalUsers.find((u: any) => u.email === email);
+    if (!userProfile) throw new Error('User not found.');
+
+    // C. Verify Password
+    const inputHash = await hashPassword(password);
+    if (userProfile.passwordHash !== inputHash) throw new Error('Invalid password.');
+
+    // D. Fetch Private Data
+    let userData = await fetchJson(generateDataFilename(email));
+    if (!userData) {
+        // Fallback if data file is missing
+        userData = { playlists: [], likedSongs: [], history: [] };
+    }
+
+    // E. Return Merged Object
+    return {
+        ...userProfile,
+        playlists: userData.playlists || [],
+        likedSongs: userData.likedSongs || [],
+        history: userData.history || []
+    } as any;
+  },
+
+  // 3. SYNC PUBLIC PROFILE (Friends, Name, Image, Chats)
+  syncPublicProfile: async (user: User) => {
+    let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    if (!Array.isArray(globalUsers)) globalUsers = [];
+
+    const idx = globalUsers.findIndex((u: any) => u.email === user.email);
+    if (idx !== -1) {
+        // Only update public fields
+        globalUsers[idx].name = user.name;
+        globalUsers[idx].image = user.image;
+        globalUsers[idx].friends = user.friends;
+        globalUsers[idx].friendRequests = user.friendRequests;
+        // In a real app, chats would be complex. Here we just overwrite.
+        // We assume the store has the latest state.
+    } else {
+        // Self-repair: add if missing
+        globalUsers.push({
+            name: user.name,
+            email: user.email,
+            passwordHash: user.passwordHash,
+            image: user.image,
+            friends: user.friends,
+            friendRequests: user.friendRequests
+        });
+    }
+
+    await uploadJson(globalUsers, GLOBAL_USERS_FILE);
+  },
+
+  // 4. SYNC PRIVATE DATA (Playlists, Liked Songs)
+  syncPrivateData: async (user: User, additionalData: any) => {
+     const dataPayload = {
+         playlists: user.playlists,
+         likedSongs: additionalData.likedSongs,
+         history: additionalData.history
+     };
+     await uploadJson(dataPayload, generateDataFilename(user.email));
+  },
+
+  // 5. SEARCH USERS
+  searchUsers: async (query: string) => {
+      const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      if (!Array.isArray(globalUsers)) return [];
       
       const lowerQ = query.toLowerCase();
-      return index.filter((u: any) => u.name.toLowerCase().includes(lowerQ));
+      return globalUsers.filter((u: any) => u.name.toLowerCase().includes(lowerQ)).map((u: any) => ({
+          name: u.name,
+          email: u.email,
+          image: u.image
+      }));
   },
 
-  // 5. Send Friend Request
+  // 6. SEND REQUEST
   sendFriendRequest: async (toEmail: string, fromUser: User) => {
-      const targetUser: User = await fetchJson(generateUserFilename(toEmail));
-      if (!targetUser) throw new Error("User not found");
+      let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      if (!Array.isArray(globalUsers)) return;
 
-      // Check if already friends or requested
+      const targetIdx = globalUsers.findIndex((u: any) => u.email === toEmail);
+      if (targetIdx === -1) throw new Error("User not found");
+
+      const targetUser = globalUsers[targetIdx];
+      
       if (targetUser.friends.includes(fromUser.email)) throw new Error("Already friends");
-      if (targetUser.friendRequests.some(r => r.fromEmail === fromUser.email)) throw new Error("Request already sent");
+      if (targetUser.friendRequests.some((r: any) => r.fromEmail === fromUser.email)) throw new Error("Request already sent");
 
-      const req: FriendRequest = {
+      targetUser.friendRequests.push({
           fromEmail: fromUser.email,
           fromName: fromUser.name,
           fromImage: fromUser.image,
           timestamp: Date.now()
-      };
+      });
 
-      targetUser.friendRequests.push(req);
-      await uploadJson(targetUser, generateUserFilename(toEmail));
+      globalUsers[targetIdx] = targetUser;
+      await uploadJson(globalUsers, GLOBAL_USERS_FILE);
   },
 
-  // 6. Accept Friend Request
+  // 7. ACCEPT REQUEST
   acceptFriendRequest: async (requestFromEmail: string, currentUser: User) => {
-      // 1. Update Current User
-      // Remove request, add to friends
-      const newReqs = currentUser.friendRequests.filter(r => r.fromEmail !== requestFromEmail);
-      if (!currentUser.friends.includes(requestFromEmail)) {
-          currentUser.friends.push(requestFromEmail);
-      }
-      currentUser.friendRequests = newReqs;
-      await uploadJson(currentUser, generateUserFilename(currentUser.email));
+      let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      if (!Array.isArray(globalUsers)) return currentUser;
 
-      // 2. Update the Sender User
-      try {
-          const sender: User = await fetchJson(generateUserFilename(requestFromEmail));
-          if (sender && !sender.friends.includes(currentUser.email)) {
-              sender.friends.push(currentUser.email);
-              await uploadJson(sender, generateUserFilename(requestFromEmail));
-          }
-      } catch (e) {
-          console.error("Failed to update sender friend list", e);
+      // Update Current User in Global DB
+      const myIdx = globalUsers.findIndex((u: any) => u.email === currentUser.email);
+      if (myIdx !== -1) {
+          const me = globalUsers[myIdx];
+          me.friendRequests = me.friendRequests.filter((r: any) => r.fromEmail !== requestFromEmail);
+          if (!me.friends.includes(requestFromEmail)) me.friends.push(requestFromEmail);
+          globalUsers[myIdx] = me;
       }
+
+      // Update Sender in Global DB
+      const senderIdx = globalUsers.findIndex((u: any) => u.email === requestFromEmail);
+      if (senderIdx !== -1) {
+          const sender = globalUsers[senderIdx];
+          if (!sender.friends.includes(currentUser.email)) sender.friends.push(currentUser.email);
+          globalUsers[senderIdx] = sender;
+      }
+
+      await uploadJson(globalUsers, GLOBAL_USERS_FILE);
+
+      // Return updated local user object
+      const updatedUser = { ...currentUser };
+      updatedUser.friendRequests = updatedUser.friendRequests.filter(r => r.fromEmail !== requestFromEmail);
+      if (!updatedUser.friends.includes(requestFromEmail)) updatedUser.friends.push(requestFromEmail);
       
-      return currentUser;
+      return updatedUser;
   },
 
-  // 7. Get Friends' Data (for Activity Feed)
+  // 8. GET FRIENDS STATUS
   getFriendsActivity: async (friendEmails: string[]) => {
-      const promises = friendEmails.map(email => fetchJson(generateUserFilename(email)));
-      const users = await Promise.all(promises);
-      return users.filter(u => u !== null) as User[];
+      const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      if (!Array.isArray(globalUsers)) return [];
+      
+      // Filter the big list for my friends
+      return globalUsers.filter((u: any) => friendEmails.includes(u.email));
   }
 };

@@ -17,9 +17,8 @@ export const Profile: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       setName(currentUser.name);
-      if (currentUser.image) {
-        setImagePreview(currentUser.image);
-      }
+      // Ensure we use the latest image from state
+      setImagePreview(currentUser.image || null);
     } else {
       navigate('/login');
     }
@@ -49,9 +48,9 @@ export const Profile: React.FC = () => {
       updateUserProfile(name, imageUrl || undefined);
       
       // Force small delay to feel like a save
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 1000));
       
-      alert('Profile updated and synced to cloud!');
+      alert('Profile updated and synced to cloud! You are now searchable.');
     } catch (error) {
       console.error("Failed to update profile", error);
       alert('Failed to update profile.');

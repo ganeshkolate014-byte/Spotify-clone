@@ -43,9 +43,9 @@ interface PlayerState {
   removePlaylist: (id: string) => void;
   
   // Auth Actions
-  loginUser: (user: User) => void;
+  loginUser: (user: User & { likedSongs?: Song[], history?: Song[] }) => void;
   logoutUser: () => void;
-  syncUserToCloud: () => void;
+  syncUserToCloud: (type?: 'public' | 'private' | 'both') => void;
   updateUserProfile: (name: string, image?: string) => void;
 
   // Social Actions
@@ -82,24 +82,12 @@ export const usePlayerStore = create<PlayerState>()(
       partySession: null,
 
       playSong: (song, newQueue) => {
-        const { addToHistory, partySession, currentUser } = get();
+        const { addToHistory, currentUser } = get();
         addToHistory(song);
         
-        // Update Cloud Status for Friends to see
-        if (currentUser) {
-            const updatedUser = { 
-                ...currentUser, 
-                currentActivity: {
-                    song: song,
-                    timestamp: Date.now(),
-                    status: 'listening' as const
-                } 
-            };
-            set({ currentUser: updatedUser });
-            // Sync quietly
-            authService.syncUser(updatedUser).catch(console.error);
-        }
-
+        // Update Cloud Status (This is ephemeral, so we handle it lightly or skip for now to save bandwidth)
+        // If we want real-time status in the global file, we would sync here.
+        
         set((state) => ({
           currentSong: song,
           isPlaying: true,
@@ -135,19 +123,34 @@ export const usePlayerStore = create<PlayerState>()(
       setQueue: (songs) => set({ queue: songs }),
       setVolume: (volume) => set({ volume }),
 
-      addToHistory: (song) => set((state) => ({ history: [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20) })),
+      addToHistory: (song) => {
+          set((state) => {
+            const newHistory = [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20);
+            // Trigger private sync
+            setTimeout(() => get().syncUserToCloud('private'), 1000);
+            return { history: newHistory };
+          });
+      },
 
-      toggleLike: (song) => set((state) => {
-        const isLiked = state.likedSongs.some(s => s.id === song.id);
-        return { likedSongs: isLiked ? state.likedSongs.filter(s => s.id !== song.id) : [song, ...state.likedSongs] };
-      }),
+      toggleLike: (song) => {
+          set((state) => {
+            const isLiked = state.likedSongs.some(s => s.id === song.id);
+            const newLiked = isLiked ? state.likedSongs.filter(s => s.id !== song.id) : [song, ...state.likedSongs];
+            
+            // Trigger private sync
+            setTimeout(() => get().syncUserToCloud('private'), 1000);
+            
+            return { likedSongs: newLiked };
+          });
+      },
 
       createPlaylist: (playlist) => {
         set((state) => {
            const newPlaylists = [playlist, ...state.userPlaylists];
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             authService.syncUser(updatedUser).catch(console.error);
+             // Trigger private sync
+             setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -165,7 +168,7 @@ export const usePlayerStore = create<PlayerState>()(
           });
           if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             authService.syncUser(updatedUser).catch(console.error);
+             setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -177,7 +180,7 @@ export const usePlayerStore = create<PlayerState>()(
            const newPlaylists = state.userPlaylists.filter(p => p.id !== id);
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             authService.syncUser(updatedUser).catch(console.error);
+             setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -188,6 +191,8 @@ export const usePlayerStore = create<PlayerState>()(
           set({ 
             currentUser: user, 
             userPlaylists: user.playlists || [],
+            likedSongs: user.likedSongs || [],
+            history: user.history || [],
             friendRequests: user.friendRequests || []
           });
           get().refreshFriendsActivity();
@@ -198,12 +203,30 @@ export const usePlayerStore = create<PlayerState>()(
         userPlaylists: [],
         friends: [],
         friendRequests: [],
-        partySession: null
+        partySession: null,
+        likedSongs: [],
+        history: []
       }),
       
-      syncUserToCloud: async () => {
-         const { currentUser } = get();
-         if (currentUser) await authService.syncUser(currentUser);
+      syncUserToCloud: async (type = 'both') => {
+         const { currentUser, userPlaylists, likedSongs, history } = get();
+         if (!currentUser) return;
+
+         // Ensure the currentUser object has the latest playlists
+         const updatedUser = { ...currentUser, playlists: userPlaylists };
+
+         try {
+             if (type === 'public' || type === 'both') {
+                await authService.syncPublicProfile(updatedUser);
+             }
+             
+             if (type === 'private' || type === 'both') {
+                 // We pass the loose data explicitly
+                 await authService.syncPrivateData(updatedUser, { likedSongs, history });
+             }
+         } catch (e) {
+             console.error("Sync failed", e);
+         }
       },
 
       updateUserProfile: (name, image) => {
@@ -214,7 +237,14 @@ export const usePlayerStore = create<PlayerState>()(
               name: name,
               image: image !== undefined ? image : state.currentUser.image 
           };
-          authService.syncUser(updatedUser).catch(console.error);
+          
+          // Profile updates are public
+          setTimeout(() => {
+              // We need to manually call the service here because get().syncUserToCloud reads from state,
+              // and state updates might be batched.
+              authService.syncPublicProfile(updatedUser);
+          }, 100);
+
           return { currentUser: updatedUser };
         });
       },
@@ -237,7 +267,6 @@ export const usePlayerStore = create<PlayerState>()(
           const { currentUser } = get();
           if (!currentUser) return;
           await authService.sendFriendRequest(toEmail, currentUser);
-          // Optimistic UI update? No, wait for refresh.
       },
 
       acceptFriendRequest: async (fromEmail) => {
@@ -266,7 +295,7 @@ export const usePlayerStore = create<PlayerState>()(
                   status: u.currentActivity?.status || 'offline',
                   currentSong: u.currentActivity?.song || null,
                   lastActive: u.currentActivity?.timestamp || 0,
-                  chatHistory: [] // Chat history would require a separate persisted file, skipping for this demo complexity
+                  chatHistory: [] 
               }));
               
               set({ friends: mappedFriends });
@@ -285,6 +314,8 @@ export const usePlayerStore = create<PlayerState>()(
           timestamp: Date.now()
         };
 
+        // Note: In a real app, this should sync to the Global File 'chats' array.
+        // For now, we keep it local state for immediate UI feedback.
         const updatedFriends = state.friends.map(f => {
           if (f.id === friendId) {
              return { ...f, chatHistory: [...f.chatHistory, newMessage] };
