@@ -114,6 +114,7 @@ export const authService = {
   savePublicPlaylist: async (playlist: UserPlaylist) => {
     try {
       // Save to a global 'playlists' collection so it can be fetched by ID by anyone
+      // Use cleanData to avoid undefined errors
       await setDoc(doc(db, "global_playlists", playlist.id), cleanData(playlist));
     } catch (e) {
       console.error("Failed to save public playlist", e);

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { authService } from '../services/auth';
 import { getImageUrl, api } from '../services/api';
-import { Play, Pause, Clock3, MoreHorizontal, Trash2, Music, ArrowLeft, Search, Plus, CheckCircle2, Download, Heart } from 'lucide-react';
+import { Play, Pause, Clock3, MoreHorizontal, Trash2, Music, ArrowLeft, Search, Plus, CheckCircle2, Download, Heart, Share2 } from 'lucide-react';
 import { Song, UserPlaylist } from '../types';
 
 export const PlaylistDetails: React.FC = () => {
@@ -94,6 +94,13 @@ export const PlaylistDetails: React.FC = () => {
       alert('Playlist added to your library!');
   };
 
+  const handleShare = () => {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => {
+          alert("Link copied to clipboard!");
+      });
+  };
+
   const handleAddSong = (song: Song) => {
       addSongToPlaylist(viewPlaylist.id, song);
   };
@@ -115,6 +122,13 @@ export const PlaylistDetails: React.FC = () => {
           </button>
           
           <div className="flex items-center gap-2">
+             <button 
+                onClick={handleShare}
+                className="w-8 h-8 rounded-full bg-black/40 hover:bg-white/10 flex items-center justify-center text-white backdrop-blur-md transition-colors"
+                title="Share Playlist"
+             >
+                 <Share2 size={16} />
+             </button>
             {isMyPlaylist ? (
                 <button 
                     onClick={handleDelete}
@@ -126,7 +140,7 @@ export const PlaylistDetails: React.FC = () => {
             ) : (
                  <button 
                     onClick={handleImport}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-white text-black rounded-full font-bold text-sm hover:scale-105 transition-transform"
+                    className="flex items-center gap-2 px-4 py-1.5 bg-white text-black rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg"
                 >
                     <Heart size={16} fill="black" /> Add to Library
                 </button>
@@ -177,7 +191,7 @@ export const PlaylistDetails: React.FC = () => {
                 className="w-10 h-10 border border-[#727272] rounded-full flex items-center justify-center hover:border-white hover:scale-105 transition-all"
                 title="Save to Library"
              >
-                 <Heart size={20} className="text-white" />
+                 <Heart size={24} className="text-white" />
              </button>
          )}
          <button className="text-white/60 hover:text-white transition-colors">
