@@ -18,27 +18,37 @@ const generateUserFilename = (email: string) => {
 
 // Helper to save any JSON to Cloudinary
 const uploadJson = async (data: any, publicId: string) => {
+    // For raw files, explicitly include the extension in the public_id
+    const fullPublicId = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const file = new File([blob], `${publicId}.json`, { type: 'application/json' });
+    const file = new File([blob], fullPublicId, { type: 'application/json' });
+    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', UPLOAD_PRESET);
-    formData.append('cloud_name', CLOUD_NAME);
-    formData.append('public_id', publicId);
-    formData.append('resource_type', 'raw');
-    formData.append('overwrite', 'true');
-
+    formData.append('public_id', fullPublicId);
+    
+    // Removing 'overwrite' and 'resource_type' from body to reduce Bad Request risk on unsigned presets
+    
     const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+
+    if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        console.error("Cloudinary Error:", errBody);
+        throw new Error(`Upload failed: ${errBody.error?.message || res.statusText}`);
+    }
 };
 
 // Helper to fetch any JSON
 const fetchJson = async (publicId: string) => {
-    const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${publicId}.json`;
-    const res = await fetch(url + `?t=${Date.now()}`);
+    // Ensure we fetch the .json version
+    const resourceName = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
+    const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${resourceName}`;
+    
+    const res = await fetch(url + `?t=${Date.now()}`); // Bust cache
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('Fetch failed');
     return await res.json();
