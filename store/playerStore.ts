@@ -41,6 +41,7 @@ interface PlayerState {
   addToHistory: (song: Song) => void;
   toggleLike: (song: Song) => void;
   createPlaylist: (playlist: UserPlaylist) => void;
+  importPlaylist: (playlist: UserPlaylist) => void;
   addSongToPlaylist: (playlistId: string, song: Song) => void;
   removePlaylist: (id: string) => void;
   
@@ -153,6 +154,25 @@ export const usePlayerStore = create<PlayerState>()(
       createPlaylist: (playlist) => {
         set((state) => {
            const newPlaylists = [playlist, ...state.userPlaylists];
+           
+           // Also save to global playlists for sharing
+           authService.savePublicPlaylist(playlist);
+           
+           if (state.currentUser) {
+             const updatedUser = { ...state.currentUser, playlists: newPlaylists };
+             setTimeout(() => get().syncUserToCloud('private'), 1000);
+             return { userPlaylists: newPlaylists, currentUser: updatedUser };
+           }
+           return { userPlaylists: newPlaylists };
+        });
+      },
+
+      importPlaylist: (playlist) => {
+        set((state) => {
+           // Avoid duplicates
+           if (state.userPlaylists.some(p => p.id === playlist.id)) return {};
+
+           const newPlaylists = [playlist, ...state.userPlaylists];
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
              setTimeout(() => get().syncUserToCloud('private'), 1000);
@@ -166,8 +186,12 @@ export const usePlayerStore = create<PlayerState>()(
         set((state) => {
           const newPlaylists = state.userPlaylists.map(p => {
             if (p.id === playlistId) {
+               // Update global copy too if it exists there
+               const updated = { ...p, songs: [...p.songs, song] };
                if (p.songs.some(s => s.id === song.id)) return p;
-               return { ...p, songs: [...p.songs, song] };
+               
+               authService.savePublicPlaylist(updated);
+               return updated;
             }
             return p;
           });

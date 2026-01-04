@@ -1,4 +1,4 @@
-import { User, ChatMessage } from '../types';
+import { User, ChatMessage, UserPlaylist } from '../types';
 import { auth, db } from './firebase';
 import { 
   createUserWithEmailAndPassword, 
@@ -106,6 +106,31 @@ export const authService = {
         throw new Error("Password or Email Incorrect");
       }
       throw error;
+    }
+  },
+
+  // --- PLAYLIST SHARING ---
+
+  savePublicPlaylist: async (playlist: UserPlaylist) => {
+    try {
+      // Save to a global 'playlists' collection so it can be fetched by ID by anyone
+      await setDoc(doc(db, "global_playlists", playlist.id), cleanData(playlist));
+    } catch (e) {
+      console.error("Failed to save public playlist", e);
+    }
+  },
+
+  getPublicPlaylist: async (playlistId: string): Promise<UserPlaylist | null> => {
+    try {
+      const docRef = doc(db, "global_playlists", playlistId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as UserPlaylist;
+      }
+      return null;
+    } catch (e) {
+      console.error("Failed to fetch public playlist", e);
+      return null;
     }
   },
 
