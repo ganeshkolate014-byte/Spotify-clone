@@ -76,13 +76,6 @@ export interface UserPlaylist extends Playlist {
   creator?: string; // email or id
 }
 
-export interface FriendRequest {
-  fromEmail: string;
-  fromName: string;
-  fromImage?: string;
-  timestamp: number;
-}
-
 export interface User {
   email: string;
   passwordHash?: string; // Optional with Firebase
@@ -91,8 +84,7 @@ export interface User {
   playlists: UserPlaylist[];
   
   // Social Fields
-  friends: string[]; // List of friend emails
-  friendRequests: FriendRequest[];
+  friends: string[]; // List of friend/contact emails
   
   // Real-time Status (Synced to cloud)
   currentActivity?: {
