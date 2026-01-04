@@ -1,3 +1,4 @@
+
 export interface Image {
   quality: string;
   url: string;
@@ -84,7 +85,7 @@ export interface FriendRequest {
 
 export interface User {
   email: string;
-  passwordHash: string; // Encrypted
+  passwordHash?: string; // Optional with Firebase
   name: string; // Acts as Username
   image?: string; // Profile picture URL
   playlists: UserPlaylist[];
