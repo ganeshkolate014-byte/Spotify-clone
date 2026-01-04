@@ -60,7 +60,7 @@ export const Social: React.FC = () => {
             >
                 Activity
                 {friendRequests.length > 0 && (
-                    <span className="bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full">{friendRequests.length}</span>
+                    <span className="bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold">{friendRequests.length}</span>
                 )}
             </button>
             <button 
@@ -76,31 +76,31 @@ export const Social: React.FC = () => {
                 
                 {/* --- PENDING REQUESTS (Visible here for easy Mobile access) --- */}
                 {friendRequests.length > 0 && (
-                    <div className="bg-[#181818] rounded-xl p-4 border border-[#333]">
-                        <h3 className="text-white font-bold mb-3 flex items-center gap-2">
-                            <UserCheck size={18} className="text-[#1DB954]" />
+                    <div className="bg-[#181818] rounded-xl p-4 border border-[#333] mb-4 shadow-lg animate-in slide-in-from-top fade-in">
+                        <h3 className="text-white font-bold mb-3 flex items-center gap-2 text-sm uppercase tracking-wider text-[#1DB954]">
+                            <UserCheck size={16} />
                             Friend Requests
                         </h3>
                         <div className="flex flex-col gap-3">
                             {friendRequests.map((req, i) => (
-                                <div key={i} className="flex items-center justify-between bg-[#121212] p-2 rounded-lg">
+                                <div key={i} className="flex items-center justify-between bg-[#121212] p-3 rounded-lg border border-white/5">
                                     <div className="flex items-center gap-3">
                                         {req.fromImage ? (
-                                            <img src={req.fromImage} className="w-10 h-10 rounded-full object-cover" alt="" />
+                                            <img src={req.fromImage} className="w-12 h-12 rounded-full object-cover" alt="" />
                                         ) : (
-                                            <div className="w-10 h-10 bg-[#333] rounded-full flex items-center justify-center"><User size={20}/></div>
+                                            <div className="w-12 h-12 bg-[#333] rounded-full flex items-center justify-center"><User size={24}/></div>
                                         )}
                                         <div className="flex flex-col">
-                                            <span className="font-bold text-sm text-white">{req.fromName}</span>
-                                            <span className="text-[10px] text-[#777]">wants to connect</span>
+                                            <span className="font-bold text-base text-white">{req.fromName}</span>
+                                            <span className="text-xs text-[#777]">wants to connect</span>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => acceptFriendRequest(req.fromEmail)} className="p-2 bg-[#1DB954] rounded-full text-black hover:scale-105 active:scale-95 shadow-md">
-                                            <Check size={18} strokeWidth={3} />
+                                    <div className="flex gap-3">
+                                        <button onClick={() => acceptFriendRequest(req.fromEmail)} className="w-10 h-10 bg-[#1DB954] rounded-full flex items-center justify-center text-black hover:scale-105 active:scale-95 shadow-md">
+                                            <Check size={20} strokeWidth={3} />
                                         </button>
-                                        <button className="p-2 bg-[#333] rounded-full text-white hover:bg-[#444] active:scale-95">
-                                            <X size={18} strokeWidth={3} />
+                                        <button className="w-10 h-10 bg-[#333] rounded-full flex items-center justify-center text-white hover:bg-[#444] active:scale-95">
+                                            <X size={20} strokeWidth={3} />
                                         </button>
                                     </div>
                                 </div>

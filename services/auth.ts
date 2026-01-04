@@ -22,6 +22,7 @@ const generateDataFilename = (email: string) => {
 // --- API HELPERS ---
 
 const uploadJson = async (data: any, publicId: string) => {
+    // Cloudinary raw files often require the extension in the public_id to be accessible via that extension URL
     const fullPublicId = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const file = new File([blob], fullPublicId, { type: 'application/json' });
@@ -46,9 +47,7 @@ const fetchJson = async (publicId: string) => {
     const resourceName = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
     const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${resourceName}`;
     
-    // STRICT Cache busting:
-    // 1. Timestamp query param
-    // 2. Cache-Control headers to prevent browser/CDN caching
+    // STRICT Cache busting to prevent overwriting data due to stale reads
     try {
         const res = await fetch(url + `?t=${Date.now()}&v=${Math.random()}`, {
             cache: 'no-store',
@@ -58,14 +57,18 @@ const fetchJson = async (publicId: string) => {
             }
         });
         
-        // Handle 404 (File not found) gracefully
+        // 404 means the file genuinely doesn't exist yet -> Return null to signal "Create New"
         if (res.status === 404) return null;
-        if (!res.ok) throw new Error('Fetch failed');
+        
+        // Any other error (500, CORS, etc) -> Throw Error to ABORT operations
+        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+        
         return await res.json();
     } catch (e) {
-        // If network error, mostly likely file doesn't exist yet or connection issue
-        console.warn("Fetch warning:", e);
-        return null;
+        // We re-throw here so the calling function knows IT IS NOT SAFE TO WRITE.
+        // If we returned null here, the app would think the DB is empty and overwrite it.
+        console.error("Critical DB Read Error:", e);
+        throw e;
     }
 };
 
@@ -75,11 +78,21 @@ export const authService = {
 
   // 1. SIGN UP
   signup: async (name: string, email: string, password: string): Promise<User> => {
-    // A. Fetch Global User List with retry logic to ensure we get the absolute latest
-    let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    let globalUsers;
+
+    try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    } catch (e) {
+        // STOP! Do not proceed if we can't read the DB.
+        throw new Error("Could not connect to user database. Please check your connection and try again.");
+    }
     
-    // Automatic banado: If missing, start empty array
-    if (!Array.isArray(globalUsers)) globalUsers = [];
+    // Automatic banado: If missing (strictly 404 null), start empty array
+    if (globalUsers === null) {
+        globalUsers = [];
+    } else if (!Array.isArray(globalUsers)) {
+        throw new Error("Database corrupted.");
+    }
 
     // B. Check duplicates
     if (globalUsers.find((u: any) => u.email === email)) {
@@ -88,7 +101,7 @@ export const authService = {
 
     const passwordHash = await hashPassword(password);
 
-    // C. Create Public Profile Object (Stored in vibestream_users.json)
+    // C. Create Public Profile Object
     const newUserProfile = {
         name,
         email,
@@ -96,10 +109,10 @@ export const authService = {
         image: '',
         friends: [],
         friendRequests: [],
-        chats: {} // Store chats as map: friendEmail -> Message[]
+        chats: {} 
     };
 
-    // D. Create Private Data Object (Stored in data_{email}.json)
+    // D. Create Private Data Object
     const newUserData = {
         playlists: [],
         likedSongs: [],
@@ -110,12 +123,12 @@ export const authService = {
     // E. Save Everything - Add to list
     globalUsers.push(newUserProfile);
     
-    await Promise.all([
-        uploadJson(globalUsers, GLOBAL_USERS_FILE),
-        uploadJson(newUserData, generateDataFilename(email))
-    ]);
+    // Upload Global File First
+    await uploadJson(globalUsers, GLOBAL_USERS_FILE);
+    // Then Upload Private Data
+    await uploadJson(newUserData, generateDataFilename(email));
 
-    // F. Return merged User object for the app state
+    // F. Return merged User object
     return {
         ...newUserProfile,
         playlists: newUserData.playlists,
@@ -126,9 +139,14 @@ export const authService = {
 
   // 2. LOGIN
   login: async (email: string, password: string): Promise<User & { chats?: any }> => {
-    // A. Fetch Global Users
-    const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
-    if (!Array.isArray(globalUsers)) throw new Error('User database empty. Please sign up first.');
+    let globalUsers;
+    try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    } catch (e) {
+        throw new Error("Connection error. Please try again.");
+    }
+
+    if (!Array.isArray(globalUsers)) throw new Error('User database empty or not found. Please sign up.');
 
     // B. Find User
     const userProfile = globalUsers.find((u: any) => u.email === email);
@@ -139,7 +157,14 @@ export const authService = {
     if (userProfile.passwordHash !== inputHash) throw new Error('Invalid password.');
 
     // D. Fetch Private Data
-    let userData = await fetchJson(generateDataFilename(email));
+    let userData = null;
+    try {
+        userData = await fetchJson(generateDataFilename(email));
+    } catch (e) {
+        // It's okay if private data fails, we can recover
+        console.warn("Could not fetch private data");
+    }
+
     if (!userData) {
         // Fallback/Auto-fix if data file is missing
         userData = { playlists: [], likedSongs: [], history: [] };
@@ -156,14 +181,21 @@ export const authService = {
     } as any;
   },
 
-  // 3. SYNC PUBLIC PROFILE (Friends, Name, Image, Chats)
+  // 3. SYNC PUBLIC PROFILE
   syncPublicProfile: async (user: User, chats?: Record<string, ChatMessage[]>) => {
-    let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    let globalUsers;
+    try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    } catch (e) {
+        console.error("Sync skip: Cannot read global DB");
+        return; // Skip sync if we can't read, to avoid overwrite
+    }
+
     if (!Array.isArray(globalUsers)) globalUsers = [];
 
     const idx = globalUsers.findIndex((u: any) => u.email === user.email);
     if (idx !== -1) {
-        // Only update public fields
+        // Update existing
         globalUsers[idx].name = user.name;
         globalUsers[idx].image = user.image;
         globalUsers[idx].friends = user.friends;
@@ -172,7 +204,7 @@ export const authService = {
             globalUsers[idx].chats = chats;
         }
     } else {
-        // Self-repair: add if missing
+        // Self-repair: add if missing (rare case)
         globalUsers.push({
             name: user.name,
             email: user.email,
@@ -187,7 +219,7 @@ export const authService = {
     await uploadJson(globalUsers, GLOBAL_USERS_FILE);
   },
 
-  // 4. SYNC PRIVATE DATA (Playlists, Liked Songs)
+  // 4. SYNC PRIVATE DATA
   syncPrivateData: async (user: User, additionalData: any) => {
      const dataPayload = {
          playlists: user.playlists,
@@ -199,7 +231,11 @@ export const authService = {
 
   // 5. SEARCH USERS
   searchUsers: async (query: string) => {
-      const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      let globalUsers;
+      try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      } catch (e) { return []; }
+
       if (!Array.isArray(globalUsers)) return [];
       
       const lowerQ = query.toLowerCase();
@@ -212,7 +248,11 @@ export const authService = {
 
   // 6. SEND REQUEST
   sendFriendRequest: async (toEmail: string, fromUser: User) => {
-      let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      let globalUsers;
+      try {
+         globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      } catch (e) { throw new Error("Connection failed"); }
+
       if (!Array.isArray(globalUsers)) return;
 
       const targetIdx = globalUsers.findIndex((u: any) => u.email === toEmail);
@@ -236,7 +276,11 @@ export const authService = {
 
   // 7. ACCEPT REQUEST
   acceptFriendRequest: async (requestFromEmail: string, currentUser: User) => {
-      let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      let globalUsers;
+      try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      } catch (e) { throw new Error("Connection failed"); }
+
       if (!Array.isArray(globalUsers)) return currentUser;
 
       // Update Current User in Global DB
@@ -266,12 +310,15 @@ export const authService = {
       return updatedUser;
   },
 
-  // 8. GET FRIENDS STATUS (Includes fetching their chats if needed, though we sync ours)
+  // 8. GET FRIENDS STATUS
   getFriendsActivity: async (friendEmails: string[]) => {
-      const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      let globalUsers;
+      try {
+        globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+      } catch (e) { return []; }
+
       if (!Array.isArray(globalUsers)) return [];
       
-      // Filter the big list for my friends
       return globalUsers.filter((u: any) => friendEmails.includes(u.email));
   }
 };

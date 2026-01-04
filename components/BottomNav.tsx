@@ -41,7 +41,7 @@ export const BottomNav: React.FC = () => {
                 <div className="relative">
                     <Users size={24} strokeWidth={isActive ? 3 : 2} />
                     {friendRequests.length > 0 && (
-                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></div>
+                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black animate-pulse"></div>
                     )}
                 </div>
                 <span>Friends</span>
