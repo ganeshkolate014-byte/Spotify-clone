@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
-import { FriendsActivity } from './components/FriendsActivity';
+// import { FriendsActivity } from './components/FriendsActivity'; // MAINTENANCE
 import { Player } from './components/Player';
 import { BottomNav } from './components/BottomNav';
-import { ChatWindow } from './components/ChatWindow';
+// import { ChatWindow } from './components/ChatWindow'; // MAINTENANCE
 import { Home } from './pages/Home';
 import { Search } from './pages/Search';
 import { Library } from './pages/Library';
@@ -78,7 +78,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       
       <main 
         ref={mainRef}
-        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mx-0 no-scrollbar ${isFullScreenPage ? 'z-50 !m-0 !rounded-none' : ''}`}
+        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mx-0 no-scrollbar overscroll-none ${isFullScreenPage ? 'z-50 !m-0 !rounded-none' : ''}`}
       >
          {/* Main Content */}
         {children}
@@ -86,11 +86,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {!isFullScreenPage && <div className="h-32 md:h-24 w-full"></div>}
       </main>
 
-      {/* Right Sidebar (Desktop only) */}
-      {!isFullScreenPage && <FriendsActivity />}
+      {/* Right Sidebar (Desktop only) - DISABLED FOR MAINTENANCE */}
+      {/* {!isFullScreenPage && <FriendsActivity />} */}
 
-      {/* Global Chat Window Overlay (Desktop) */}
-      {!isFullScreenPage && <div className="hidden md:block"><ChatWindow /></div>}
+      {/* Global Chat Window Overlay (Desktop) - DISABLED FOR MAINTENANCE */}
+      {/* {!isFullScreenPage && <div className="hidden md:block"><ChatWindow /></div>} */}
 
       {!isFullScreenPage && <Player />}
       {!isFullScreenPage && <BottomNav />}
