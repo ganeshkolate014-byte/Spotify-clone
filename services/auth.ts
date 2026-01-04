@@ -34,8 +34,6 @@ export const authService = {
         friendRequests: [],
         playlists: [],
         // Private data fields initialized
-        // Note: In a real app, private data might go to a subcollection, 
-        // but keeping structure flat for compatibility with existing types
       };
 
       // Create user document in Firestore
@@ -92,7 +90,6 @@ export const authService = {
       };
 
     } catch (error: any) {
-      // Specific error message requirement
       if (
         error.code === 'auth/invalid-credential' || 
         error.code === 'auth/user-not-found' || 
@@ -116,14 +113,13 @@ export const authService = {
       image: user.image,
       friends: user.friends,
       friendRequests: user.friendRequests,
-      playlists: user.playlists // Sync playlists here as they are public/shared in this app model
+      playlists: user.playlists 
     };
 
     if (chats) {
       updates.chats = chats;
     }
 
-    // We can also sync currentActivity here
     if (user.currentActivity) {
       updates.currentActivity = user.currentActivity;
     }
@@ -137,7 +133,7 @@ export const authService = {
      const userRef = doc(db, "users", auth.currentUser.uid);
      
      await updateDoc(userRef, {
-         playlists: user.playlists, // Also syncing here to be safe
+         playlists: user.playlists, 
          likedSongs: additionalData.likedSongs,
          history: additionalData.history
      });
@@ -145,15 +141,9 @@ export const authService = {
 
   // 5. SEARCH USERS
   searchUsers: async (queryText: string) => {
-      // Firestore text search is limited. 
-      // For this implementation, we will query all users and filter client side 
-      // OR rely on exact email match if we want strictness.
-      // To keep it simple and functional for a "demo" production feel:
       const usersRef = collection(db, "users");
-      const q = query(usersRef); // Get all (careful with large DBs)
+      const q = query(usersRef); 
       
-      // Optimization: In a real app, use Algolia. 
-      // Here, we fetch top 50 and filter.
       const querySnapshot = await getDocs(q);
       
       const results: any[] = [];
@@ -162,8 +152,8 @@ export const authService = {
       querySnapshot.forEach((doc) => {
           const data = doc.data();
           if (
-              data.name.toLowerCase().includes(lowerQ) || 
-              data.email.toLowerCase().includes(lowerQ)
+              (data.name && data.name.toLowerCase().includes(lowerQ)) || 
+              (data.email && data.email.toLowerCase().includes(lowerQ))
           ) {
               results.push({
                   name: data.name,
@@ -176,7 +166,7 @@ export const authService = {
       return results.slice(0, 10);
   },
 
-  // 6. SEND REQUEST
+  // 6. SEND REQUEST (UPDATED)
   sendFriendRequest: async (toEmail: string, fromUser: User) => {
       // 1. Find target user by email
       const usersRef = collection(db, "users");
@@ -190,29 +180,36 @@ export const authService = {
       const targetDoc = querySnapshot.docs[0];
       const targetData = targetDoc.data();
 
+      // Normalize arrays from DB or default to empty
+      const currentRequests: FriendRequest[] = targetData.friendRequests || [];
+      const currentFriends: string[] = targetData.friends || [];
+
       // Check if already friends
-      if (targetData.friends?.includes(fromUser.email)) {
+      if (currentFriends.includes(fromUser.email)) {
           throw new Error("Already friends");
       }
 
       // Check if request already sent
-      const existingReq = targetData.friendRequests?.find((r: any) => r.fromEmail === fromUser.email);
+      const existingReq = currentRequests.find((r) => r.fromEmail === fromUser.email);
       if (existingReq) {
           throw new Error("Request already sent");
       }
 
-      // Update target user doc
+      // Create proper request object - Explicitly handle potential undefined values to satisfy Firestore
+      const newRequest: FriendRequest = {
+          fromEmail: fromUser.email,
+          fromName: fromUser.name || 'Unknown',
+          fromImage: fromUser.image || '',
+          timestamp: Date.now()
+      };
+
+      // Use updateDoc with the new array (safer than arrayUnion for objects)
       await updateDoc(targetDoc.ref, {
-          friendRequests: arrayUnion({
-              fromEmail: fromUser.email,
-              fromName: fromUser.name,
-              fromImage: fromUser.image || '',
-              timestamp: Date.now()
-          })
+          friendRequests: [...currentRequests, newRequest]
       });
   },
 
-  // 7. ACCEPT REQUEST
+  // 7. ACCEPT REQUEST (UPDATED)
   acceptFriendRequest: async (requestFromEmail: string, currentUser: User) => {
       if (!auth.currentUser) throw new Error("Not authenticated");
       
@@ -225,22 +222,26 @@ export const authService = {
       
       if (!senderSnapshot.empty) {
           const senderDoc = senderSnapshot.docs[0];
-          await updateDoc(senderDoc.ref, {
-              friends: arrayUnion(currentUser.email)
-          });
+          const senderData = senderDoc.data();
+          const senderFriends = senderData.friends || [];
+
+          if (!senderFriends.includes(currentUser.email)) {
+             await updateDoc(senderDoc.ref, {
+                  friends: [...senderFriends, currentUser.email]
+             });
+          }
       }
 
       // 2. Update My Doc (Remove request, Add friend)
-      // We need to remove the specific object from the array. 
-      // arrayRemove requires exact object match. 
-      // Since we don't have the exact object reference easily, 
-      // we'll read, filter, and write back (optimistic update happens in store anyway).
-      
       const myDoc = await getDoc(myRef);
       if (myDoc.exists()) {
           const data = myDoc.data();
-          const newRequests = (data.friendRequests || []).filter((r: any) => r.fromEmail !== requestFromEmail);
-          const newFriends = [...(data.friends || [])];
+          const currentRequests = data.friendRequests || [];
+          const currentFriends = data.friends || [];
+
+          const newRequests = currentRequests.filter((r: any) => r.fromEmail !== requestFromEmail);
+          
+          const newFriends = [...currentFriends];
           if (!newFriends.includes(requestFromEmail)) {
               newFriends.push(requestFromEmail);
           }
@@ -263,22 +264,20 @@ export const authService = {
   // 8. GET FRIENDS STATUS
   getFriendsActivity: async (friendEmails: string[]) => {
       if (!friendEmails || friendEmails.length === 0) return [];
-
-      // Firestore 'in' query supports up to 10 items.
-      // For scalability, we fetch individually or use batches.
-      // For this implementation, we'll fetch all matching emails.
       
       const usersRef = collection(db, "users");
-      // If friends list is huge, this logic needs pagination/chunks.
-      // Assuming < 10 friends for demo:
-      if (friendEmails.length <= 10) {
-          const q = query(usersRef, where("email", "in", friendEmails));
+      // Safety check: ensure no empty strings or duplicates
+      const safeEmails = [...new Set(friendEmails.filter(e => e))];
+      
+      if (safeEmails.length === 0) return [];
+
+      if (safeEmails.length <= 10) {
+          const q = query(usersRef, where("email", "in", safeEmails));
           const snapshot = await getDocs(q);
           return snapshot.docs.map(d => d.data());
       } else {
-          // Fallback: Fetch chunks or query all and filter (not efficient but simple for now)
-          // Just fetching top 10 for safety in this demo architecture
-          const subset = friendEmails.slice(0, 10);
+          // Fallback: Fetch chunks or query all
+          const subset = safeEmails.slice(0, 10);
           const q = query(usersRef, where("email", "in", subset));
           const snapshot = await getDocs(q);
           return snapshot.docs.map(d => d.data());
