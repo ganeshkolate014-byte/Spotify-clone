@@ -66,5 +66,22 @@ export interface Artist {
   image: Image[];
 }
 
+// User Created Playlist
+export interface UserPlaylist extends Playlist {
+  songs: Song[];
+  isUserCreated: boolean;
+  description?: string;
+  createdAt: number;
+  creator?: string; // email or id
+}
+
+export interface User {
+  email: string;
+  passwordHash: string; // Encrypted
+  name: string;
+  image?: string; // Profile picture URL
+  playlists: UserPlaylist[];
+}
+
 // Unified type for grid display
-export type SearchResult = Song | Album | Artist | Playlist;
+export type SearchResult = Song | Album | Artist | Playlist | UserPlaylist;

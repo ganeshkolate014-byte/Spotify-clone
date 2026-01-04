@@ -32,7 +32,7 @@ export const AlbumDetails: React.FC = () => {
             <span className="uppercase text-xs font-bold tracking-wider">Album</span>
             <h1 className="text-4xl md:text-7xl font-black tracking-tight">{album.name}</h1>
             <div className="flex items-center gap-2 text-sm font-bold text-white mt-4">
-                <span className="hover:underline cursor-pointer">{album.artists.primary[0]?.name}</span>
+                <span className="hover:underline cursor-pointer">{album.artists?.primary?.[0]?.name || "Unknown Artist"}</span>
                 <span className="text-secondary">• {album.year} • {songs.length} songs</span>
             </div>
         </div>
@@ -72,7 +72,7 @@ export const AlbumDetails: React.FC = () => {
                     <div className="flex items-center gap-3 overflow-hidden">
                         <div className="flex flex-col truncate">
                             <span className="text-white font-medium text-base truncate">{song.name}</span>
-                            <span className="text-xs group-hover:text-white truncate">{song.artists.primary[0]?.name}</span>
+                            <span className="text-xs group-hover:text-white truncate">{song.artists?.primary?.[0]?.name || "Unknown"}</span>
                         </div>
                     </div>
                     <span className="hidden md:block text-sm truncate">{album.name}</span>

@@ -22,6 +22,34 @@ export const getAudioUrl = (downloadUrls: { url: string }[]) => {
   return last?.url || secondLast?.url || thirdLast?.url || downloadUrls[0]?.url || '';
 };
 
+// Cloudinary Upload Helper
+export const uploadToCloudinary = async (file: File): Promise<string> => {
+  const cloudName = 'dj5hhott5'; 
+  const uploadPreset = 'My smallest server';
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', uploadPreset);
+  formData.append('cloud_name', cloudName);
+
+  try {
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Image upload failed');
+    }
+
+    const data = await response.json();
+    return data.secure_url;
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    throw error;
+  }
+};
+
 async function fetchJson<T>(endpoint: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${endpoint}`);
   if (!response.ok) {

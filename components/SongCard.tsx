@@ -19,12 +19,10 @@ export const SongCard: React.FC<SongCardProps> = ({ item, onPlay, subtitle, roun
     if (item.type === 'album') {
       navigate(`/album/${item.id}`);
     } else if (item.type === 'artist') {
-      // Pass the artist object in state to avoid re-fetching details immediately
       navigate(`/artist/${item.id}`, { state: { artist: item } });
     } else if (item.type === 'song' && onPlay) {
       onPlay();
     }
-    // Playlist logic can remain as is or be added later
   };
 
   const handlePlayClick = (e: React.MouseEvent) => {
@@ -32,36 +30,51 @@ export const SongCard: React.FC<SongCardProps> = ({ item, onPlay, subtitle, roun
     if (onPlay) onPlay();
   };
 
+  // Safe subtitle generation
+  let safeSubtitle = subtitle;
+  if (!safeSubtitle) {
+      if (item.type === 'song') {
+          safeSubtitle = item.artists?.primary?.[0]?.name || item.artists?.all?.[0]?.name || 'Artist';
+      } else if (item.type === 'album') {
+          safeSubtitle = `Album • ${item.artists?.primary?.[0]?.name || 'Artist'}`;
+      } else if (item.type === 'artist') {
+          safeSubtitle = 'Artist';
+      } else if (item.type === 'playlist') {
+          safeSubtitle = item.subtitle || 'Playlist';
+      }
+  }
+
+  // Handle display title (Playlist has 'title', others have 'name')
+  const displayTitle = item.type === 'playlist' ? item.title : item.name;
+
   return (
     <div 
       onClick={handleClick}
-      className="group relative bg-[#181818] hover:bg-[#282828] p-4 rounded-lg transition-colors duration-300 cursor-pointer w-[180px] shrink-0"
+      className="group relative bg-[#181818]/60 backdrop-blur-sm hover:bg-[#282828] p-3 rounded-xl transition-all duration-300 cursor-pointer w-[160px] md:w-[180px] shrink-0 border border-white/5 hover:border-white/10 hover:-translate-y-1"
     >
-      <div className={`relative w-full aspect-square mb-4 shadow-xl ${round ? 'rounded-full' : 'rounded-md'} overflow-hidden`}>
+      <div className={`relative w-full aspect-square mb-3 shadow-lg ${round ? 'rounded-full' : 'rounded-lg'} overflow-hidden`}>
         <img 
           src={imageUrl} 
-          alt={item.name || (item as any).title} 
-          className="w-full h-full object-cover"
+          alt={displayTitle} 
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
-        {/* Play Button Overlay (Spotify Style) - Only show for songs/albums */}
+        {/* Play Button Overlay */}
         {!round && item.type !== 'artist' && (
           <button 
             onClick={handlePlayClick}
-            className="absolute bottom-2 right-2 translate-y-2 opacity-0 group-hover:translate-y-[-8px] group-hover:opacity-100 transition-all duration-300 bg-[#1DB954] text-black rounded-full p-3 shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 z-20"
+            className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 bg-[#1DB954] text-black rounded-full p-3 shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 z-20"
           >
-            <Play size={22} fill="black" className="ml-0.5" />
+            <Play size={20} fill="black" className="ml-1" />
           </button>
         )}
       </div>
-      <div className="flex flex-col gap-1 min-h-[60px]">
-        <h3 className="text-white font-bold truncate text-base mb-1">
-          {item.name || (item as any).title}
+      <div className="flex flex-col gap-0.5 min-h-[48px]">
+        <h3 className="text-white font-bold truncate text-[15px] mb-1 leading-tight group-hover:underline decoration-1 underline-offset-2">
+          {displayTitle}
         </h3>
-        <p className="text-[#A7A7A7] text-sm truncate line-clamp-2 font-medium">
-          {subtitle || (item.type === 'song' ? (item as any).artists?.primary?.[0]?.name : 
-                        item.type === 'album' ? `Album • ${(item as any).artists?.primary?.[0]?.name}` : 
-                        item.type === 'artist' ? 'Artist' : '')}
+        <p className="text-[#A7A7A7] text-[13px] truncate font-medium">
+          {safeSubtitle}
         </p>
       </div>
     </div>

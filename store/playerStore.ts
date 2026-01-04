@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Song } from '../types';
+import { Song, UserPlaylist, User } from '../types';
+import { authService } from '../services/auth';
 
 interface PlayerState {
   isPlaying: boolean;
@@ -10,9 +11,13 @@ interface PlayerState {
   queue: Song[];
   history: Song[];
   likedSongs: Song[];
+  userPlaylists: UserPlaylist[];
   volume: number;
   isShuffling: boolean;
   
+  // Auth
+  currentUser: User | null;
+
   // Actions
   playSong: (song: Song, newQueue?: Song[]) => void;
   togglePlay: () => void;
@@ -26,6 +31,15 @@ interface PlayerState {
   setVolume: (val: number) => void;
   addToHistory: (song: Song) => void;
   toggleLike: (song: Song) => void;
+  createPlaylist: (playlist: UserPlaylist) => void;
+  addSongToPlaylist: (playlistId: string, song: Song) => void;
+  removePlaylist: (id: string) => void;
+  
+  // Auth Actions
+  loginUser: (user: User) => void;
+  logoutUser: () => void;
+  syncUserToCloud: () => void;
+  updateUserProfile: (name: string, image?: string) => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -38,8 +52,10 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       history: [],
       likedSongs: [],
+      userPlaylists: [],
       volume: 1,
       isShuffling: false,
+      currentUser: null,
 
       playSong: (song, newQueue) => {
         const { addToHistory } = get();
@@ -110,14 +126,92 @@ export const usePlayerStore = create<PlayerState>()(
           newLiked = [song, ...state.likedSongs];
         }
         return { likedSongs: newLiked };
-      })
+      }),
+
+      createPlaylist: (playlist) => {
+        set((state) => {
+           const newPlaylists = [playlist, ...state.userPlaylists];
+           // Sync if user logged in
+           if (state.currentUser) {
+             const updatedUser = { ...state.currentUser, playlists: newPlaylists };
+             // Fire and forget sync
+             authService.syncUser(updatedUser).catch(console.error);
+             return { userPlaylists: newPlaylists, currentUser: updatedUser };
+           }
+           return { userPlaylists: newPlaylists };
+        });
+      },
+
+      addSongToPlaylist: (playlistId, song) => {
+        set((state) => {
+          const newPlaylists = state.userPlaylists.map(p => {
+            if (p.id === playlistId) {
+               if (p.songs.some(s => s.id === song.id)) return p;
+               return { ...p, songs: [...p.songs, song] };
+            }
+            return p;
+          });
+
+          if (state.currentUser) {
+             const updatedUser = { ...state.currentUser, playlists: newPlaylists };
+             authService.syncUser(updatedUser).catch(console.error);
+             return { userPlaylists: newPlaylists, currentUser: updatedUser };
+          }
+          return { userPlaylists: newPlaylists };
+        });
+      },
+
+      removePlaylist: (id) => {
+        set((state) => {
+           const newPlaylists = state.userPlaylists.filter(p => p.id !== id);
+           if (state.currentUser) {
+             const updatedUser = { ...state.currentUser, playlists: newPlaylists };
+             authService.syncUser(updatedUser).catch(console.error);
+             return { userPlaylists: newPlaylists, currentUser: updatedUser };
+           }
+           return { userPlaylists: newPlaylists };
+        });
+      },
+
+      loginUser: (user) => set({ 
+        currentUser: user, 
+        userPlaylists: user.playlists || [] // Load user playlists
+      }),
+
+      logoutUser: () => set({ 
+        currentUser: null, 
+        userPlaylists: [] 
+      }),
+      
+      syncUserToCloud: async () => {
+         const { currentUser } = get();
+         if (currentUser) {
+            await authService.syncUser(currentUser);
+         }
+      },
+
+      updateUserProfile: (name, image) => {
+        set((state) => {
+          if (!state.currentUser) return {};
+          const updatedUser = { 
+              ...state.currentUser, 
+              name: name,
+              image: image !== undefined ? image : state.currentUser.image 
+          };
+          
+          authService.syncUser(updatedUser).catch(console.error);
+          return { currentUser: updatedUser };
+        });
+      }
     }),
     {
       name: 'vibestream-storage',
       partialize: (state) => ({ 
         history: state.history, 
         volume: state.volume,
-        likedSongs: state.likedSongs
+        likedSongs: state.likedSongs,
+        userPlaylists: state.userPlaylists,
+        currentUser: state.currentUser
       }), 
     }
   )

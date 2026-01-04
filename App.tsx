@@ -10,6 +10,10 @@ import { AlbumDetails } from './pages/AlbumDetails';
 import { ArtistDetails } from './pages/ArtistDetails';
 import { LoginPromo } from './pages/LoginPromo';
 import { LikedSongs } from './pages/LikedSongs';
+import { PlaylistDetails } from './pages/PlaylistDetails';
+import { Login } from './pages/Login';
+import { Signup } from './pages/Signup';
+import { Profile } from './pages/Profile';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Page Transition Wrapper
@@ -39,8 +43,12 @@ const AnimatedRoutes: React.FC = () => {
         <Route path="/library" element={<PageTransition><Library /></PageTransition>} />
         <Route path="/album/:id" element={<PageTransition><AlbumDetails /></PageTransition>} />
         <Route path="/artist/:id" element={<PageTransition><ArtistDetails /></PageTransition>} />
+        <Route path="/playlist/:id" element={<PageTransition><PlaylistDetails /></PageTransition>} />
         <Route path="/premium" element={<PageTransition><LoginPromo /></PageTransition>} />
         <Route path="/liked" element={<PageTransition><LikedSongs /></PageTransition>} />
+        <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
+        <Route path="/signup" element={<PageTransition><Signup /></PageTransition>} />
+        <Route path="/profile" element={<PageTransition><Profile /></PageTransition>} />
       </Routes>
     </AnimatePresence>
   );
@@ -49,7 +57,8 @@ const AnimatedRoutes: React.FC = () => {
 // Layout wrapper to handle scroll behavior and structure
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const isPromo = location.pathname === '/premium';
+  // Pages that don't need sidebar/player
+  const isFullScreenPage = ['/premium', '/login', '/signup'].includes(location.pathname);
   const mainRef = useRef<HTMLElement>(null);
 
   // Scroll to top on route change
@@ -61,18 +70,18 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="flex h-screen w-screen bg-black text-white overflow-hidden">
-      {!isPromo && <Sidebar />}
+      {!isFullScreenPage && <Sidebar />}
       <main 
         ref={mainRef}
-        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mr-2 no-scrollbar ${isPromo ? 'z-50' : ''}`}
+        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mr-2 no-scrollbar ${isFullScreenPage ? 'z-50 !m-0 !rounded-none' : ''}`}
       >
          {/* Main Content */}
         {children}
         {/* Spacer for bottom nav/player on mobile */}
-        <div className="h-32 md:h-24 w-full"></div>
+        {!isFullScreenPage && <div className="h-32 md:h-24 w-full"></div>}
       </main>
-      <Player />
-      {!isPromo && <BottomNav />}
+      {!isFullScreenPage && <Player />}
+      {!isFullScreenPage && <BottomNav />}
     </div>
   );
 };
