@@ -5,20 +5,14 @@ import { UserPlus, MessageCircle, Music2, ChevronRight, Search, Check, X, Loader
 import { useNavigate } from 'react-router-dom';
 
 export const Social: React.FC = () => {
-  const { friends, friendRequests, openChat, currentUser, searchUsers, searchResults, sendFriendRequest, acceptFriendRequest, refreshFriendsActivity } = usePlayerStore();
+  const { friends, friendRequests, openChat, currentUser, searchUsers, searchResults, sendFriendRequest, acceptFriendRequest } = usePlayerStore();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'activity' | 'add'>('activity');
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [requestStatus, setRequestStatus] = useState<{[email: string]: 'sent' | 'error' | null}>({});
 
-  useEffect(() => {
-      if (currentUser) {
-          refreshFriendsActivity();
-          const interval = setInterval(refreshFriendsActivity, 30000); // Poll every 30s
-          return () => clearInterval(interval);
-      }
-  }, [currentUser]);
+  // Real-time listeners are initialized in App/Login, so we don't need polling here anymore.
 
   const handleSearch = async (val: string) => {
       setQuery(val);

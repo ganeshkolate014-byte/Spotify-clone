@@ -24,6 +24,9 @@ interface PlayerState {
   searchResults: { name: string, email: string, image?: string }[];
   activeChatFriendId: string | null;
   partySession: PartySession | null;
+  
+  // Realtime Cleanup
+  unsubscribers: Function[];
 
   // Actions
   playSong: (song: Song, newQueue?: Song[]) => void;
@@ -47,6 +50,7 @@ interface PlayerState {
   logoutUser: () => void;
   syncUserToCloud: (type?: 'public' | 'private' | 'both') => void;
   updateUserProfile: (name: string, image?: string) => void;
+  initRealtimeListeners: () => void;
 
   // Social Actions
   searchUsers: (query: string) => Promise<void>;
@@ -80,13 +84,16 @@ export const usePlayerStore = create<PlayerState>()(
       searchResults: [],
       activeChatFriendId: null,
       partySession: null,
+      unsubscribers: [],
 
       playSong: (song, newQueue) => {
         const { addToHistory, currentUser } = get();
         addToHistory(song);
         
-        // Update Cloud Status (This is ephemeral, so we handle it lightly or skip for now to save bandwidth)
-        // If we want real-time status in the global file, we would sync here.
+        // Update Cloud Status Realtime
+        if (currentUser) {
+            authService.updateUserStatus('listening', song);
+        }
         
         set((state) => ({
           currentSong: song,
@@ -99,7 +106,14 @@ export const usePlayerStore = create<PlayerState>()(
 
       togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
       
-      setIsPlaying: (isPlaying) => set({ isPlaying }),
+      setIsPlaying: (isPlaying) => {
+          set({ isPlaying });
+          const { currentUser, currentSong } = get();
+          if (currentUser && !isPlaying) {
+             authService.updateUserStatus('online', currentSong); // Paused
+          }
+      },
+
       setIsBuffering: (isBuffering) => set({ isBuffering }),
       setFullScreen: (isFullScreen) => set({ isFullScreen }),
 
@@ -126,7 +140,6 @@ export const usePlayerStore = create<PlayerState>()(
       addToHistory: (song) => {
           set((state) => {
             const newHistory = [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20);
-            // Trigger private sync
             setTimeout(() => get().syncUserToCloud('private'), 1000);
             return { history: newHistory };
           });
@@ -136,10 +149,7 @@ export const usePlayerStore = create<PlayerState>()(
           set((state) => {
             const isLiked = state.likedSongs.some(s => s.id === song.id);
             const newLiked = isLiked ? state.likedSongs.filter(s => s.id !== song.id) : [song, ...state.likedSongs];
-            
-            // Trigger private sync
             setTimeout(() => get().syncUserToCloud('private'), 1000);
-            
             return { likedSongs: newLiked };
           });
       },
@@ -149,7 +159,6 @@ export const usePlayerStore = create<PlayerState>()(
            const newPlaylists = [playlist, ...state.userPlaylists];
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             // Trigger private sync
              setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
@@ -187,6 +196,8 @@ export const usePlayerStore = create<PlayerState>()(
         });
       },
 
+      // --- AUTH ACTIONS ---
+
       loginUser: (user) => {
           set({ 
             currentUser: user, 
@@ -196,52 +207,110 @@ export const usePlayerStore = create<PlayerState>()(
             friendRequests: user.friendRequests || []
           });
           
-          // Hydrate friends with chats if available
-          get().refreshFriendsActivity().then(() => {
-              if (user.chats) {
-                 set((state) => {
-                     const friendsWithChats = state.friends.map(f => ({
-                         ...f,
-                         chatHistory: user.chats[f.id] || []
-                     }));
-                     return { friends: friendsWithChats };
-                 });
-              }
-          });
+          // Hydrate initial chat history
+          if (user.chats) {
+              set((state) => {
+                  // Map raw chat objects to friends
+                  // We need to temporarily create friend objects if they don't exist in 'friends' state yet
+                  // but typically 'initRealtimeListeners' will handle this better.
+                  return state; 
+              });
+          }
+
+          // Start Realtime Listeners
+          get().initRealtimeListeners();
       },
 
-      logoutUser: () => set({ 
-        currentUser: null, 
-        userPlaylists: [],
-        friends: [],
-        friendRequests: [],
-        partySession: null,
-        likedSongs: [],
-        history: []
-      }),
-      
-      syncUserToCloud: async (type = 'both') => {
-         const { currentUser, userPlaylists, likedSongs, history, friends } = get();
+      initRealtimeListeners: () => {
+         // 1. Unsubscribe existing
+         const { unsubscribers, currentUser } = get();
+         unsubscribers.forEach(unsub => unsub());
+         set({ unsubscribers: [] });
+
          if (!currentUser) return;
 
-         // Ensure the currentUser object has the latest playlists
+         // 2. Subscribe to My User Data (Friend Requests, My Profile Changes, Incoming Chats)
+         const unsubUser = authService.subscribeToUserData((data) => {
+             set((state) => {
+                 const updatedUser = { ...state.currentUser, ...data } as User;
+                 
+                 // Handle incoming chats
+                 let updatedFriends = [...state.friends];
+                 if (data.chats) {
+                     updatedFriends = updatedFriends.map(f => ({
+                         ...f,
+                         chatHistory: data.chats[f.id] || []
+                     }));
+                 }
+
+                 return {
+                     currentUser: updatedUser,
+                     friendRequests: data.friendRequests || [],
+                     friends: updatedFriends,
+                     // If playlists updated from another device
+                     userPlaylists: data.playlists || state.userPlaylists
+                 };
+             });
+         });
+
+         // 3. Subscribe to Friends' Activity (Status, Song)
+         let unsubFriends = () => {};
+         if (currentUser.friends && currentUser.friends.length > 0) {
+             unsubFriends = authService.subscribeToFriendsActivity(currentUser.friends, (friendsData) => {
+                 set((state) => {
+                     // Merge live data with existing friend list
+                     const mappedFriends: Friend[] = friendsData.map((u: any) => {
+                         const existing = state.friends.find(f => f.id === u.email);
+                         const chats = state.currentUser?.chats ? state.currentUser.chats[u.email] : [];
+
+                         return {
+                             id: u.email,
+                             name: u.name,
+                             image: u.image || '',
+                             status: u.currentActivity?.status || 'offline',
+                             currentSong: u.currentActivity?.song || null,
+                             lastActive: u.currentActivity?.timestamp || 0,
+                             chatHistory: existing?.chatHistory || chats || []
+                         };
+                     });
+                     return { friends: mappedFriends };
+                 });
+             });
+         }
+
+         set({ unsubscribers: [unsubUser, unsubFriends] });
+      },
+
+      logoutUser: async () => {
+        // Cleanup listeners
+        get().unsubscribers.forEach(unsub => unsub());
+        
+        await authService.logout();
+
+        set({ 
+            currentUser: null, 
+            userPlaylists: [],
+            friends: [],
+            friendRequests: [],
+            partySession: null,
+            likedSongs: [],
+            history: [],
+            unsubscribers: []
+        });
+      },
+      
+      syncUserToCloud: async (type = 'both') => {
+         const { currentUser, userPlaylists, likedSongs, history } = get();
+         if (!currentUser) return;
+
          const updatedUser = { ...currentUser, playlists: userPlaylists };
 
          try {
              if (type === 'public' || type === 'both') {
-                // Collect chats to save
-                const chats: Record<string, ChatMessage[]> = {};
-                friends.forEach(f => {
-                    if (f.chatHistory && f.chatHistory.length > 0) {
-                        chats[f.id] = f.chatHistory;
-                    }
-                });
-                
-                await authService.syncPublicProfile(updatedUser, chats);
+                // Chats are now handled via sendMessage atomic updates
+                await authService.syncPublicProfile(updatedUser);
              }
-             
              if (type === 'private' || type === 'both') {
-                 // We pass the loose data explicitly
                  await authService.syncPrivateData(updatedUser, { likedSongs, history });
              }
          } catch (e) {
@@ -258,12 +327,8 @@ export const usePlayerStore = create<PlayerState>()(
               image: image !== undefined ? image : state.currentUser.image 
           };
           
-          // Profile updates are public
+          // Trigger sync immediately
           setTimeout(() => {
-              // We need to manually call the service here because get().syncUserToCloud reads from state,
-              // and state updates might be batched.
-              // Note: We don't have access to latest chats here easily without full sync, 
-              // so we trigger full syncPublic for simplicity
               get().syncUserToCloud('public');
           }, 100);
 
@@ -276,7 +341,6 @@ export const usePlayerStore = create<PlayerState>()(
       searchUsers: async (query) => {
           try {
               const results = await authService.searchUsers(query);
-              // Filter out self
               const { currentUser } = get();
               const filtered = results.filter(u => u.email !== currentUser?.email);
               set({ searchResults: filtered });
@@ -289,70 +353,61 @@ export const usePlayerStore = create<PlayerState>()(
           const { currentUser } = get();
           if (!currentUser) return;
           await authService.sendFriendRequest(toEmail, currentUser);
+          // Note: No need to manually update requests, the listener on the OTHER user will handle it, 
+          // and if we listed sent requests, we'd need to listen to that too. 
+          // Current app only shows RECEIVED requests.
       },
 
       acceptFriendRequest: async (fromEmail) => {
           const { currentUser } = get();
           if (!currentUser) return;
-          const updatedUser = await authService.acceptFriendRequest(fromEmail, currentUser);
-          set({ currentUser: updatedUser, friendRequests: updatedUser.friendRequests });
-          get().refreshFriendsActivity();
+          
+          await authService.acceptFriendRequest(fromEmail, currentUser);
+          
+          // Re-init listeners to pick up the new friend in the Friends Activity listener
+          setTimeout(() => {
+              get().initRealtimeListeners();
+          }, 1000);
       },
 
       refreshFriendsActivity: async () => {
-          const { currentUser, friends } = get();
-          if (!currentUser || !currentUser.friends || currentUser.friends.length === 0) {
-              set({ friends: [] });
-              return;
-          }
-
-          try {
-              const rawFriends = await authService.getFriendsActivity(currentUser.friends);
-              
-              // Map raw User objects to the UI Friend type
-              const mappedFriends: Friend[] = rawFriends.map(u => {
-                  // Preserve existing chats if we already have this friend loaded
-                  const existing = friends.find(f => f.id === u.email);
-                  
-                  return {
-                      id: u.email,
-                      name: u.name,
-                      image: u.image || 'https://via.placeholder.com/150',
-                      status: u.currentActivity?.status || 'offline',
-                      currentSong: u.currentActivity?.song || null,
-                      lastActive: u.currentActivity?.timestamp || 0,
-                      chatHistory: existing ? existing.chatHistory : [] 
-                  };
-              });
-              
-              set({ friends: mappedFriends });
-          } catch (e) {
-              console.error("Failed to refresh friends", e);
-          }
+          // Deprecated in favor of initRealtimeListeners, 
+          // but kept as a manual fallback if needed
+          get().initRealtimeListeners();
       },
 
       openChat: (friendId) => set({ activeChatFriendId: friendId }),
 
-      sendMessage: (friendId, text) => set((state) => {
-        const newMessage: ChatMessage = {
-          id: `msg-${Date.now()}`,
-          senderId: state.currentUser?.email || 'me',
-          text,
-          timestamp: Date.now()
-        };
+      sendMessage: async (friendId, text) => {
+          const { currentUser } = get();
+          if (!currentUser) return;
 
-        const updatedFriends = state.friends.map(f => {
-          if (f.id === friendId) {
-             return { ...f, chatHistory: [...f.chatHistory, newMessage] };
+          const newMessage: ChatMessage = {
+              id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              senderId: currentUser.email,
+              text,
+              timestamp: Date.now()
+          };
+
+          // Optimistic Update
+          set((state) => {
+              const updatedFriends = state.friends.map(f => {
+                  if (f.id === friendId) {
+                      return { ...f, chatHistory: [...f.chatHistory, newMessage] };
+                  }
+                  return f;
+              });
+              return { friends: updatedFriends };
+          });
+
+          // Send to Cloud (Updates both users)
+          try {
+              await authService.sendChatMessage(currentUser.email, friendId, newMessage);
+          } catch (e) {
+              console.error("Failed to send message", e);
+              // In production, revert optimistic update here
           }
-          return f;
-        });
-        
-        // Trigger sync to save chat
-        setTimeout(() => get().syncUserToCloud('public'), 1000);
-
-        return { friends: updatedFriends };
-      }),
+      },
 
       startParty: () => set((state) => {
          if (!state.currentUser) return {};
@@ -376,7 +431,7 @@ export const usePlayerStore = create<PlayerState>()(
         likedSongs: state.likedSongs,
         userPlaylists: state.userPlaylists,
         currentUser: state.currentUser,
-        friends: state.friends // Persist friends locally
+        // Don't persist friends heavily, let listeners hydrate them
       }), 
     }
   )
