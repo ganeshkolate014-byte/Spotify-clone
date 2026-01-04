@@ -43,7 +43,7 @@ interface PlayerState {
   removePlaylist: (id: string) => void;
   
   // Auth Actions
-  loginUser: (user: User & { likedSongs?: Song[], history?: Song[] }) => void;
+  loginUser: (user: User & { likedSongs?: Song[], history?: Song[], chats?: any }) => void;
   logoutUser: () => void;
   syncUserToCloud: (type?: 'public' | 'private' | 'both') => void;
   updateUserProfile: (name: string, image?: string) => void;
@@ -195,7 +195,19 @@ export const usePlayerStore = create<PlayerState>()(
             history: user.history || [],
             friendRequests: user.friendRequests || []
           });
-          get().refreshFriendsActivity();
+          
+          // Hydrate friends with chats if available
+          get().refreshFriendsActivity().then(() => {
+              if (user.chats) {
+                 set((state) => {
+                     const friendsWithChats = state.friends.map(f => ({
+                         ...f,
+                         chatHistory: user.chats[f.id] || []
+                     }));
+                     return { friends: friendsWithChats };
+                 });
+              }
+          });
       },
 
       logoutUser: () => set({ 
@@ -209,7 +221,7 @@ export const usePlayerStore = create<PlayerState>()(
       }),
       
       syncUserToCloud: async (type = 'both') => {
-         const { currentUser, userPlaylists, likedSongs, history } = get();
+         const { currentUser, userPlaylists, likedSongs, history, friends } = get();
          if (!currentUser) return;
 
          // Ensure the currentUser object has the latest playlists
@@ -217,7 +229,15 @@ export const usePlayerStore = create<PlayerState>()(
 
          try {
              if (type === 'public' || type === 'both') {
-                await authService.syncPublicProfile(updatedUser);
+                // Collect chats to save
+                const chats: Record<string, ChatMessage[]> = {};
+                friends.forEach(f => {
+                    if (f.chatHistory && f.chatHistory.length > 0) {
+                        chats[f.id] = f.chatHistory;
+                    }
+                });
+                
+                await authService.syncPublicProfile(updatedUser, chats);
              }
              
              if (type === 'private' || type === 'both') {
@@ -242,7 +262,9 @@ export const usePlayerStore = create<PlayerState>()(
           setTimeout(() => {
               // We need to manually call the service here because get().syncUserToCloud reads from state,
               // and state updates might be batched.
-              authService.syncPublicProfile(updatedUser);
+              // Note: We don't have access to latest chats here easily without full sync, 
+              // so we trigger full syncPublic for simplicity
+              get().syncUserToCloud('public');
           }, 100);
 
           return { currentUser: updatedUser };
@@ -278,7 +300,7 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       refreshFriendsActivity: async () => {
-          const { currentUser } = get();
+          const { currentUser, friends } = get();
           if (!currentUser || !currentUser.friends || currentUser.friends.length === 0) {
               set({ friends: [] });
               return;
@@ -288,15 +310,20 @@ export const usePlayerStore = create<PlayerState>()(
               const rawFriends = await authService.getFriendsActivity(currentUser.friends);
               
               // Map raw User objects to the UI Friend type
-              const mappedFriends: Friend[] = rawFriends.map(u => ({
-                  id: u.email,
-                  name: u.name,
-                  image: u.image || 'https://via.placeholder.com/150',
-                  status: u.currentActivity?.status || 'offline',
-                  currentSong: u.currentActivity?.song || null,
-                  lastActive: u.currentActivity?.timestamp || 0,
-                  chatHistory: [] 
-              }));
+              const mappedFriends: Friend[] = rawFriends.map(u => {
+                  // Preserve existing chats if we already have this friend loaded
+                  const existing = friends.find(f => f.id === u.email);
+                  
+                  return {
+                      id: u.email,
+                      name: u.name,
+                      image: u.image || 'https://via.placeholder.com/150',
+                      status: u.currentActivity?.status || 'offline',
+                      currentSong: u.currentActivity?.song || null,
+                      lastActive: u.currentActivity?.timestamp || 0,
+                      chatHistory: existing ? existing.chatHistory : [] 
+                  };
+              });
               
               set({ friends: mappedFriends });
           } catch (e) {
@@ -314,14 +341,15 @@ export const usePlayerStore = create<PlayerState>()(
           timestamp: Date.now()
         };
 
-        // Note: In a real app, this should sync to the Global File 'chats' array.
-        // For now, we keep it local state for immediate UI feedback.
         const updatedFriends = state.friends.map(f => {
           if (f.id === friendId) {
              return { ...f, chatHistory: [...f.chatHistory, newMessage] };
           }
           return f;
         });
+        
+        // Trigger sync to save chat
+        setTimeout(() => get().syncUserToCloud('public'), 1000);
 
         return { friends: updatedFriends };
       }),

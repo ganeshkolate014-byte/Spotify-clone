@@ -48,6 +48,7 @@ const fetchJson = async (publicId: string) => {
     
     // Cache bust with timestamp
     const res = await fetch(url + `?t=${Date.now()}`); 
+    // Handle 404 (File not found) gracefully
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('Fetch failed');
     return await res.json();
@@ -61,6 +62,7 @@ export const authService = {
   signup: async (name: string, email: string, password: string): Promise<User> => {
     // A. Fetch Global User List
     let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
+    // Automatic banado: If missing, start empty array
     if (!Array.isArray(globalUsers)) globalUsers = [];
 
     // B. Check duplicates
@@ -78,7 +80,7 @@ export const authService = {
         image: '',
         friends: [],
         friendRequests: [],
-        chats: [] // Store chats globally for simplicity in this architecture
+        chats: {} // Store chats as map: friendEmail -> Message[]
     };
 
     // D. Create Private Data Object (Stored in data_{email}.json)
@@ -101,15 +103,13 @@ export const authService = {
     return {
         ...newUserProfile,
         playlists: newUserData.playlists,
-        // We attach these temporarily to the User object so the store can read them, 
-        // even though they aren't strictly part of the 'User' type in the DB
         likedSongs: newUserData.likedSongs, 
         history: newUserData.history
     } as any;
   },
 
   // 2. LOGIN
-  login: async (email: string, password: string): Promise<User> => {
+  login: async (email: string, password: string): Promise<User & { chats?: any }> => {
     // A. Fetch Global Users
     const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
     if (!Array.isArray(globalUsers)) throw new Error('User database empty.');
@@ -125,7 +125,7 @@ export const authService = {
     // D. Fetch Private Data
     let userData = await fetchJson(generateDataFilename(email));
     if (!userData) {
-        // Fallback if data file is missing
+        // Fallback/Auto-fix if data file is missing
         userData = { playlists: [], likedSongs: [], history: [] };
     }
 
@@ -134,12 +134,14 @@ export const authService = {
         ...userProfile,
         playlists: userData.playlists || [],
         likedSongs: userData.likedSongs || [],
-        history: userData.history || []
+        history: userData.history || [],
+        // Include chats so store can hydrate
+        chats: userProfile.chats || {}
     } as any;
   },
 
   // 3. SYNC PUBLIC PROFILE (Friends, Name, Image, Chats)
-  syncPublicProfile: async (user: User) => {
+  syncPublicProfile: async (user: User, chats?: Record<string, ChatMessage[]>) => {
     let globalUsers = await fetchJson(GLOBAL_USERS_FILE);
     if (!Array.isArray(globalUsers)) globalUsers = [];
 
@@ -150,8 +152,9 @@ export const authService = {
         globalUsers[idx].image = user.image;
         globalUsers[idx].friends = user.friends;
         globalUsers[idx].friendRequests = user.friendRequests;
-        // In a real app, chats would be complex. Here we just overwrite.
-        // We assume the store has the latest state.
+        if (chats) {
+            globalUsers[idx].chats = chats;
+        }
     } else {
         // Self-repair: add if missing
         globalUsers.push({
@@ -160,7 +163,8 @@ export const authService = {
             passwordHash: user.passwordHash,
             image: user.image,
             friends: user.friends,
-            friendRequests: user.friendRequests
+            friendRequests: user.friendRequests,
+            chats: chats || {}
         });
     }
 
@@ -246,7 +250,7 @@ export const authService = {
       return updatedUser;
   },
 
-  // 8. GET FRIENDS STATUS
+  // 8. GET FRIENDS STATUS (Includes fetching their chats if needed, though we sync ours)
   getFriendsActivity: async (friendEmails: string[]) => {
       const globalUsers = await fetchJson(GLOBAL_USERS_FILE);
       if (!Array.isArray(globalUsers)) return [];

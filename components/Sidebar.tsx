@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library, Plus, ArrowRight, Heart, Music, UserCircle, LogOut } from 'lucide-react';
+import { Home, Search, Library, Plus, ArrowRight, Heart, Music, UserCircle, LogOut, Sparkles } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { getImageUrl } from '../services/api';
@@ -44,6 +44,9 @@ export const Sidebar: React.FC = () => {
              <span className="font-bold">Your Library</span>
           </div>
           <div className="flex items-center gap-1">
+             <button onClick={() => navigate('/premium')} className="p-2 text-[#B3B3B3] hover:text-white hover:bg-[#1A1A1A] rounded-full transition-colors" title="Premium">
+                <Sparkles size={20} />
+             </button>
              <button className="p-2 text-[#B3B3B3] hover:text-white hover:bg-[#1A1A1A] rounded-full transition-colors">
                 <Plus size={20} />
              </button>
