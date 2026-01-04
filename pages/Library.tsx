@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-import { Search, Plus, ArrowUpDown, Pin, Heart, Music } from 'lucide-react';
+import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle } from 'lucide-react';
 import { getImageUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
 
 export const Library: React.FC = () => {
-  const { likedSongs, userPlaylists } = usePlayerStore();
+  const { likedSongs, userPlaylists, currentUser } = usePlayerStore();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'All' | 'Playlists' | 'Artists'>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -14,19 +14,36 @@ export const Library: React.FC = () => {
   const FilterChip = ({ label }: { label: string }) => (
       <button 
         onClick={() => setFilter(label as any)}
-        className={`px-4 py-1.5 rounded-full text-xs font-medium border border-transparent transition-colors ${filter === label ? 'bg-[#1DB954] text-black' : 'bg-[#2A2A2A] text-white hover:bg-[#3E3E3E]'}`}
+        className={`px-4 py-1.5 rounded-full text-xs font-medium border border-transparent transition-colors ${filter === label ? 'bg-[#1DB954] text-black' : 'bg-[#2A2A2A] text-white hover:bg-[#3E3E3E] active:scale-95'}`}
       >
           {label}
       </button>
   );
 
+  const handleProfileClick = () => {
+    if (currentUser) {
+        navigate('/profile');
+    } else {
+        navigate('/login');
+    }
+  };
+
   return (
     <div className="min-h-full pb-32 bg-[#121212] pt-4 px-4">
       
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 sticky top-0 bg-[#121212] z-20 py-2">
           <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center font-bold text-black text-xs">A</div>
+              <div 
+                 onClick={handleProfileClick}
+                 className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center font-bold text-black text-xs cursor-pointer hover:scale-105 transition-transform overflow-hidden"
+              >
+                  {currentUser && currentUser.image ? (
+                     <img src={currentUser.image} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                     <span className="font-bold">{currentUser ? currentUser.name.charAt(0).toUpperCase() : <UserCircle size={20} />}</span>
+                  )}
+              </div>
               <h1 className="text-2xl font-bold text-white">Your Library</h1>
           </div>
           <div className="flex items-center gap-4 text-white">

@@ -78,9 +78,36 @@ export interface UserPlaylist extends Playlist {
 export interface User {
   email: string;
   passwordHash: string; // Encrypted
-  name: string;
+  name: string; // Acts as Username
   image?: string; // Profile picture URL
   playlists: UserPlaylist[];
+}
+
+// --- SOCIAL FEATURES ---
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
+  timestamp: number;
+  isSystem?: boolean; // For "Started a party" messages
+}
+
+export interface Friend {
+  id: string;
+  name: string;
+  image: string;
+  status: 'online' | 'offline' | 'listening';
+  currentSong?: Song | null; // What they are listening to
+  lastActive: number;
+  chatHistory: ChatMessage[];
+}
+
+export interface PartySession {
+  isActive: boolean;
+  hostId: string;
+  hostName: string;
+  listeners: string[]; // IDs of people listening
 }
 
 // Unified type for grid display

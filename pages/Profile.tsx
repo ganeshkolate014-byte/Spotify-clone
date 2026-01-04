@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { uploadToCloudinary } from '../services/api';
-import { ArrowLeft, Camera, Loader2, Save, LogOut } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud } from 'lucide-react';
 
 export const Profile: React.FC = () => {
   const { currentUser, updateUserProfile, logoutUser } = usePlayerStore();
@@ -45,9 +45,13 @@ export const Profile: React.FC = () => {
         imageUrl = await uploadToCloudinary(imageFile);
       }
       
+      // Update logic handles syncing to Cloudinary JSON
       updateUserProfile(name, imageUrl || undefined);
-      // Optional: Show success toast
-      alert('Profile updated successfully!');
+      
+      // Force small delay to feel like a save
+      await new Promise(r => setTimeout(r, 500));
+      
+      alert('Profile updated and synced to cloud!');
     } catch (error) {
       console.error("Failed to update profile", error);
       alert('Failed to update profile.');
@@ -115,6 +119,10 @@ export const Profile: React.FC = () => {
                 accept="image/*"
                 onChange={handleImageChange}
               />
+              <div className="flex items-center gap-2 text-[#1DB954] text-xs font-bold bg-[#1DB954]/10 px-3 py-1 rounded-full">
+                  <Cloud size={12} />
+                  <span>Cloud Synced</span>
+              </div>
           </div>
 
           {/* Form */}
@@ -139,7 +147,7 @@ export const Profile: React.FC = () => {
                     disabled
                     className="bg-[#1A1A1A] text-white/50 rounded-md p-3 font-medium outline-none cursor-not-allowed border border-transparent"
                   />
-                  <span className="text-xs text-[#555]">Email cannot be changed.</span>
+                  <span className="text-xs text-[#555]">Email determines your cloud storage ID.</span>
               </div>
 
               <div className="pt-4 flex justify-end">

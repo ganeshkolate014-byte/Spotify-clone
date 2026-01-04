@@ -1,7 +1,64 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Song, UserPlaylist, User } from '../types';
+import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession } from '../types';
 import { authService } from '../services/auth';
+
+// Mock Data for Friends to demonstrate UI
+const MOCK_FRIENDS: Friend[] = [
+  {
+    id: 'f1',
+    name: 'Anjali Sharma',
+    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
+    status: 'listening',
+    lastActive: Date.now(),
+    currentSong: {
+      id: 'mock1',
+      name: 'Kesariya',
+      type: 'song',
+      album: { id: 'a1', name: 'Brahmastra', url: '' },
+      year: '2022',
+      duration: '292',
+      language: 'Hindi',
+      genre: 'Pop',
+      image: [{ quality: 'high', url: 'https://c.saavncdn.com/191/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg' }],
+      artists: { primary: [{ id: 'ar1', name: 'Arijit Singh', role: 'Singer', image: [] }], featured: [], all: [] },
+      downloadUrl: []
+    },
+    chatHistory: [
+      { id: 'm1', senderId: 'f1', text: 'Have you heard this new track?', timestamp: Date.now() - 100000 }
+    ]
+  },
+  {
+    id: 'f2',
+    name: 'Rahul Verma',
+    image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
+    status: 'online',
+    lastActive: Date.now(),
+    currentSong: null,
+    chatHistory: []
+  },
+  {
+    id: 'f3',
+    name: 'Priya Patel',
+    image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    status: 'listening',
+    lastActive: Date.now(),
+    currentSong: {
+      id: 'mock2',
+      name: 'Starboy',
+      type: 'song',
+      album: { id: 'a2', name: 'Starboy', url: '' },
+      year: '2016',
+      duration: '230',
+      language: 'English',
+      genre: 'Pop',
+      image: [{ quality: 'high', url: 'https://i.scdn.co/image/ab67616d0000b2734718e28d24527d9774635ded' }],
+      artists: { primary: [{ id: 'ar2', name: 'The Weeknd', role: 'Singer', image: [] }], featured: [], all: [] },
+      downloadUrl: []
+    },
+    chatHistory: []
+  }
+];
 
 interface PlayerState {
   isPlaying: boolean;
@@ -17,6 +74,11 @@ interface PlayerState {
   
   // Auth
   currentUser: User | null;
+
+  // Social
+  friends: Friend[];
+  activeChatFriendId: string | null;
+  partySession: PartySession | null;
 
   // Actions
   playSong: (song: Song, newQueue?: Song[]) => void;
@@ -40,6 +102,12 @@ interface PlayerState {
   logoutUser: () => void;
   syncUserToCloud: () => void;
   updateUserProfile: (name: string, image?: string) => void;
+
+  // Social Actions
+  openChat: (friendId: string | null) => void;
+  sendMessage: (friendId: string, text: string) => void;
+  startParty: () => void;
+  stopParty: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -56,10 +124,21 @@ export const usePlayerStore = create<PlayerState>()(
       volume: 1,
       isShuffling: false,
       currentUser: null,
+      
+      // Social Initial State
+      friends: MOCK_FRIENDS,
+      activeChatFriendId: null,
+      partySession: null,
 
       playSong: (song, newQueue) => {
-        const { addToHistory } = get();
+        const { addToHistory, partySession } = get();
         addToHistory(song);
+        
+        // If hosting a party, this song would theoretically sync to others here
+        if (partySession && partySession.hostId === 'me') {
+            console.log("Broadcasting song change to party...");
+        }
+
         set((state) => ({
           currentSong: song,
           isPlaying: true,
@@ -80,7 +159,6 @@ export const usePlayerStore = create<PlayerState>()(
         if (!currentSong) return;
 
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-        
         let nextIndex;
         if (isShuffling) {
            nextIndex = Math.floor(Math.random() * queue.length);
@@ -107,9 +185,7 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       addToQueue: (song) => set((state) => ({ queue: [...state.queue, song] })),
-      
       setQueue: (songs) => set({ queue: songs }),
-
       setVolume: (volume) => set({ volume }),
 
       addToHistory: (song) => set((state) => {
@@ -131,10 +207,8 @@ export const usePlayerStore = create<PlayerState>()(
       createPlaylist: (playlist) => {
         set((state) => {
            const newPlaylists = [playlist, ...state.userPlaylists];
-           // Sync if user logged in
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             // Fire and forget sync
              authService.syncUser(updatedUser).catch(console.error);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
@@ -156,8 +230,8 @@ export const usePlayerStore = create<PlayerState>()(
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
              authService.syncUser(updatedUser).catch(console.error);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
-          }
-          return { userPlaylists: newPlaylists };
+           }
+           return { userPlaylists: newPlaylists };
         });
       },
 
@@ -175,12 +249,13 @@ export const usePlayerStore = create<PlayerState>()(
 
       loginUser: (user) => set({ 
         currentUser: user, 
-        userPlaylists: user.playlists || [] // Load user playlists
+        userPlaylists: user.playlists || []
       }),
 
       logoutUser: () => set({ 
         currentUser: null, 
-        userPlaylists: [] 
+        userPlaylists: [],
+        partySession: null
       }),
       
       syncUserToCloud: async () => {
@@ -198,11 +273,67 @@ export const usePlayerStore = create<PlayerState>()(
               name: name,
               image: image !== undefined ? image : state.currentUser.image 
           };
-          
           authService.syncUser(updatedUser).catch(console.error);
           return { currentUser: updatedUser };
         });
-      }
+      },
+
+      // --- SOCIAL ACTIONS ---
+
+      openChat: (friendId) => set({ activeChatFriendId: friendId }),
+
+      sendMessage: (friendId, text) => set((state) => {
+        const newMessage: ChatMessage = {
+          id: `msg-${Date.now()}`,
+          senderId: 'me',
+          text,
+          timestamp: Date.now()
+        };
+
+        const updatedFriends = state.friends.map(f => {
+          if (f.id === friendId) {
+             return { ...f, chatHistory: [...f.chatHistory, newMessage] };
+          }
+          return f;
+        });
+
+        // Mock Reply for demo
+        setTimeout(() => {
+            get().openChat(friendId); // refresh
+            set(prev => ({
+                friends: prev.friends.map(f => {
+                    if (f.id === friendId) {
+                         return {
+                             ...f,
+                             chatHistory: [...f.chatHistory, {
+                                 id: `reply-${Date.now()}`,
+                                 senderId: f.id,
+                                 text: 'That sounds awesome! Let\'s listen together.',
+                                 timestamp: Date.now()
+                             }]
+                         }
+                    }
+                    return f;
+                })
+            }))
+        }, 1500);
+
+        return { friends: updatedFriends };
+      }),
+
+      startParty: () => set((state) => {
+         if (!state.currentUser) return {};
+         return {
+             partySession: {
+                 isActive: true,
+                 hostId: 'me',
+                 hostName: state.currentUser.name,
+                 listeners: state.activeChatFriendId ? [state.activeChatFriendId] : []
+             }
+         }
+      }),
+
+      stopParty: () => set({ partySession: null })
     }),
     {
       name: 'vibestream-storage',
@@ -211,7 +342,8 @@ export const usePlayerStore = create<PlayerState>()(
         volume: state.volume,
         likedSongs: state.likedSongs,
         userPlaylists: state.userPlaylists,
-        currentUser: state.currentUser
+        currentUser: state.currentUser,
+        friends: state.friends // Persist mock friends for demo consistency
       }), 
     }
   )

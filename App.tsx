@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
+import { FriendsActivity } from './components/FriendsActivity';
 import { Player } from './components/Player';
 import { BottomNav } from './components/BottomNav';
+import { ChatWindow } from './components/ChatWindow';
 import { Home } from './pages/Home';
 import { Search } from './pages/Search';
 import { Library } from './pages/Library';
@@ -14,6 +16,7 @@ import { PlaylistDetails } from './pages/PlaylistDetails';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Profile } from './pages/Profile';
+import { Social } from './pages/Social';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Page Transition Wrapper
@@ -41,6 +44,7 @@ const AnimatedRoutes: React.FC = () => {
         <Route path="/" element={<PageTransition><Home /></PageTransition>} />
         <Route path="/search" element={<PageTransition><Search /></PageTransition>} />
         <Route path="/library" element={<PageTransition><Library /></PageTransition>} />
+        <Route path="/social" element={<PageTransition><Social /></PageTransition>} />
         <Route path="/album/:id" element={<PageTransition><AlbumDetails /></PageTransition>} />
         <Route path="/artist/:id" element={<PageTransition><ArtistDetails /></PageTransition>} />
         <Route path="/playlist/:id" element={<PageTransition><PlaylistDetails /></PageTransition>} />
@@ -69,17 +73,25 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen w-screen bg-black text-white overflow-hidden">
+    <div className="flex h-[100dvh] w-screen bg-black text-white overflow-hidden">
       {!isFullScreenPage && <Sidebar />}
+      
       <main 
         ref={mainRef}
-        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mr-2 no-scrollbar ${isFullScreenPage ? 'z-50 !m-0 !rounded-none' : ''}`}
+        className={`flex-1 relative overflow-y-auto bg-black md:bg-surface md:rounded-lg md:my-2 md:mx-0 no-scrollbar ${isFullScreenPage ? 'z-50 !m-0 !rounded-none' : ''}`}
       >
          {/* Main Content */}
         {children}
         {/* Spacer for bottom nav/player on mobile */}
         {!isFullScreenPage && <div className="h-32 md:h-24 w-full"></div>}
       </main>
+
+      {/* Right Sidebar (Desktop only) */}
+      {!isFullScreenPage && <FriendsActivity />}
+
+      {/* Global Chat Window Overlay (Desktop) */}
+      {!isFullScreenPage && <div className="hidden md:block"><ChatWindow /></div>}
+
       {!isFullScreenPage && <Player />}
       {!isFullScreenPage && <BottomNav />}
     </div>

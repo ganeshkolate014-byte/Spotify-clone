@@ -2,20 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { api, getImageUrl } from '../services/api';
 import { Song, Album } from '../types';
 import { usePlayerStore } from '../store/playerStore';
-import { Bell, History, Settings, Play } from 'lucide-react';
+import { Bell, History, Settings, Play, UserCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SongCard } from '../components/SongCard';
 
 export const Home: React.FC = () => {
   const [daylist, setDaylist] = useState<Song[]>([]);
   const [recent, setRecent] = useState<(Song | Album)[]>([]); 
-  const { history, playSong } = usePlayerStore();
+  const { history, playSong, currentUser } = usePlayerStore();
   const navigate = useNavigate();
   const [greeting, setGreeting] = useState('');
 
   useEffect(() => {
-    // Basic greeting logic is usually static in the screenshot provided (Just pills)
-    // but we'll keep the variable for potential use.
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good morning');
     else if (hour < 18) setGreeting('Good afternoon');
@@ -72,22 +70,38 @@ export const Home: React.FC = () => {
       <h2 className="text-xl md:text-2xl font-bold mb-4 text-white px-4 hover:underline cursor-pointer tracking-tight">{title}</h2>
   );
 
+  const handleProfileClick = () => {
+    if (currentUser) {
+        navigate('/profile');
+    } else {
+        navigate('/login');
+    }
+  };
+
   return (
     <div className={`flex flex-col gap-6 min-h-full pb-36 pt-2 relative`}>
       {/* Background Gradient */}
       <div className="fixed top-0 left-0 right-0 h-[300px] bg-gradient-to-b from-[#1E1E1E] to-[#121212] -z-10"></div>
 
       {/* Top Header */}
-      <div className="px-4 pt-4 flex items-center justify-start gap-3 sticky top-0 z-20 py-2 bg-transparent">
+      <div className="px-4 pt-4 flex items-center justify-start gap-3 sticky top-0 z-20 py-2 bg-transparent backdrop-blur-sm md:backdrop-blur-none">
          {/* Profile Icon */}
-         <div className="w-8 h-8 rounded-full bg-[#f472b6] flex items-center justify-center font-bold text-black text-sm shrink-0">S</div>
+         <div 
+            onClick={handleProfileClick}
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#1DB954] to-[#1ed760] flex items-center justify-center font-bold text-black text-sm shrink-0 cursor-pointer hover:scale-105 transition-transform overflow-hidden shadow-md"
+         >
+             {currentUser && currentUser.image ? (
+                 <img src={currentUser.image} alt="Profile" className="w-full h-full object-cover" />
+             ) : (
+                 <span className="font-bold">{currentUser ? currentUser.name.charAt(0).toUpperCase() : <UserCircle size={20} />}</span>
+             )}
+         </div>
          
          {/* Filter Chips */}
-         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-             <button className="px-4 py-1.5 bg-[#1DB954] text-black rounded-full text-[13px] font-medium transition-transform shadow-sm whitespace-nowrap">All</button>
-             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Music</button>
-             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Podcasts</button>
-             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Wrapped</button>
+         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mask-linear-fade">
+             <button className="px-4 py-1.5 bg-[#1DB954] text-black rounded-full text-[13px] font-medium transition-transform shadow-sm whitespace-nowrap active:scale-95">All</button>
+             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333] active:scale-95">Music</button>
+             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333] active:scale-95">Podcasts</button>
          </div>
       </div>
 
@@ -110,9 +124,11 @@ export const Home: React.FC = () => {
       {/* Recommended Section */}
       <section className="mt-2">
         <SectionTitle title="Made For You" />
-        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4">
+        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
             {daylist.map((item, i) => (
-                <SongCard key={i} item={item} onPlay={() => playSong(item, daylist)} />
+                <div key={i} className="snap-start">
+                    <SongCard item={item} onPlay={() => playSong(item, daylist)} />
+                </div>
             ))}
         </div>
       </section>
@@ -120,9 +136,11 @@ export const Home: React.FC = () => {
       {/* Popular Artists */}
        <section>
         <SectionTitle title="Your favorite artists" />
-        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4">
+        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
             {daylist.slice(0,6).map((item, i) => (
-                <SongCard key={i} item={item} round={true} />
+                <div key={i} className="snap-start">
+                    <SongCard item={item} round={true} />
+                </div>
             ))}
         </div>
       </section>
@@ -130,9 +148,11 @@ export const Home: React.FC = () => {
        {/* Recently Played */}
       <section>
         <SectionTitle title="Recently played" />
-        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4">
+        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
             {recent.length > 0 ? recent.map((item, i) => (
-                <SongCard key={i} item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
+                <div key={i} className="snap-start">
+                    <SongCard item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
+                </div>
             )) : (
                  <div className="text-[#B3B3B3] text-sm px-4 h-[100px] flex items-center">Play some music to see it here.</div>
             )}
