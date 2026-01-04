@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle } from 'lucide-react';
+import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle, Sparkles } from 'lucide-react';
 import { getImageUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
@@ -47,6 +47,7 @@ export const Library: React.FC = () => {
               <h1 className="text-2xl font-bold text-white">Your Library</h1>
           </div>
           <div className="flex items-center gap-4 text-white">
+              <button onClick={() => navigate('/premium')} className="hover:text-white/70 transition-colors"><Sparkles size={24} /></button>
               <button className="hover:text-white/70 transition-colors"><Search size={24} /></button>
               <button onClick={() => setIsModalOpen(true)} className="hover:text-white/70 transition-colors"><Plus size={26} /></button>
           </div>
