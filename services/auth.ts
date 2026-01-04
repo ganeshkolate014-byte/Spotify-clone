@@ -1,9 +1,13 @@
-import { User, FriendRequest, Song, UserPlaylist, ChatMessage } from '../types';
+import { User, FriendRequest, ChatMessage } from '../types';
 
-const CLOUD_NAME = 'dj5hhott5';
-const UPLOAD_PRESET = 'My smallest server';
+// GitHub Configuration
+// Note: Storing tokens in client-side code is not recommended for production.
+// This is implemented as per specific requirements for this build.
+const GITHUB_TOKEN = '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';
+const GITHUB_OWNER = 'ganeshkolate014-byte';
+const GITHUB_REPO = 'Spotify-json-database';
+const BRANCH = 'main';
 
-// The "Mega File" that holds all users, friends, and chats
 const GLOBAL_USERS_FILE = 'vibestream_users'; 
 
 // Simple Hashing
@@ -19,56 +23,101 @@ const generateDataFilename = (email: string) => {
   return `data_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
 };
 
-// --- API HELPERS ---
+// --- GITHUB API HELPERS ---
 
-const uploadJson = async (data: any, publicId: string) => {
-    // Cloudinary raw files often require the extension in the public_id to be accessible via that extension URL
-    const fullPublicId = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const file = new File([blob], fullPublicId, { type: 'application/json' });
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    formData.append('public_id', fullPublicId);
-    
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
-      method: 'POST',
-      body: formData,
-    });
+const getFileUrl = (filename: string) => 
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filename}.json`;
 
-    if (!res.ok) {
-        throw new Error(`Upload failed: ${res.statusText}`);
-    }
-    return await res.json();
+// Base64 helpers for UTF-8 content to ensure emojis/special chars work
+const toBase64 = (str: string) => {
+    return btoa(unescape(encodeURIComponent(str)));
 };
 
-const fetchJson = async (publicId: string) => {
-    const resourceName = publicId.endsWith('.json') ? publicId : `${publicId}.json`;
-    const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${resourceName}`;
-    
-    // STRICT Cache busting to prevent overwriting data due to stale reads
+const fromBase64 = (str: string) => {
+    return decodeURIComponent(escape(window.atob(str)));
+};
+
+const fetchJson = async (filename: string) => {
     try {
-        const res = await fetch(url + `?t=${Date.now()}&v=${Math.random()}`, {
-            cache: 'no-store',
+        const url = getFileUrl(filename);
+        // Add cache busting and ref params
+        const response = await fetch(`${url}?ref=${BRANCH}&t=${Date.now()}`, {
             headers: {
-                'Pragma': 'no-cache',
-                'Cache-Control': 'no-cache, no-store, must-revalidate'
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
             }
         });
+
+        if (response.status === 404) return null;
         
-        // 404 means the file genuinely doesn't exist yet -> Return null to signal "Create New"
-        if (res.status === 404) return null;
+        if (!response.ok) {
+            console.error(`GitHub Fetch Error ${response.status}`);
+            throw new Error(`GitHub API Error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        if (!data.content) return null;
+
+        const content = fromBase64(data.content);
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Error fetching from GitHub:", error);
+        throw error;
+    }
+};
+
+const uploadJson = async (data: any, filename: string) => {
+    try {
+        const url = getFileUrl(filename);
         
-        // Any other error (500, CORS, etc) -> Throw Error to ABORT operations
-        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+        // 1. Get existing SHA (if file exists) to allow updates
+        let sha: string | undefined;
+        try {
+            const getRes = await fetch(`${url}?ref=${BRANCH}`, {
+                headers: {
+                    'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            if (getRes.ok) {
+                const getData = await getRes.json();
+                sha = getData.sha;
+            }
+        } catch (e) {
+            // Ignore error, assumes file doesn't exist yet
+        }
+
+        // 2. Prepare Payload
+        const jsonString = JSON.stringify(data, null, 2);
+        const contentBase64 = toBase64(jsonString);
+
+        const body: any = {
+            message: `Update ${filename}`,
+            content: contentBase64,
+            branch: BRANCH
+        };
+        if (sha) body.sha = sha;
+
+        // 3. PUT request
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`GitHub Upload Error: ${errorData.message}`);
+        }
         
-        return await res.json();
-    } catch (e) {
-        // We re-throw here so the calling function knows IT IS NOT SAFE TO WRITE.
-        // If we returned null here, the app would think the DB is empty and overwrite it.
-        console.error("Critical DB Read Error:", e);
-        throw e;
+        return await response.json();
+    } catch (error) {
+        console.error("Error uploading to GitHub:", error);
+        throw error;
     }
 };
 
@@ -83,11 +132,10 @@ export const authService = {
     try {
         globalUsers = await fetchJson(GLOBAL_USERS_FILE);
     } catch (e) {
-        // STOP! Do not proceed if we can't read the DB.
         throw new Error("Could not connect to user database. Please check your connection and try again.");
     }
     
-    // Automatic banado: If missing (strictly 404 null), start empty array
+    // If null, start empty array
     if (globalUsers === null) {
         globalUsers = [];
     } else if (!Array.isArray(globalUsers)) {
@@ -161,12 +209,10 @@ export const authService = {
     try {
         userData = await fetchJson(generateDataFilename(email));
     } catch (e) {
-        // It's okay if private data fails, we can recover
         console.warn("Could not fetch private data");
     }
 
     if (!userData) {
-        // Fallback/Auto-fix if data file is missing
         userData = { playlists: [], likedSongs: [], history: [] };
     }
 
@@ -176,7 +222,6 @@ export const authService = {
         playlists: userData.playlists || [],
         likedSongs: userData.likedSongs || [],
         history: userData.history || [],
-        // Include chats so store can hydrate
         chats: userProfile.chats || {}
     } as any;
   },
@@ -188,7 +233,7 @@ export const authService = {
         globalUsers = await fetchJson(GLOBAL_USERS_FILE);
     } catch (e) {
         console.error("Sync skip: Cannot read global DB");
-        return; // Skip sync if we can't read, to avoid overwrite
+        return; 
     }
 
     if (!Array.isArray(globalUsers)) globalUsers = [];
@@ -204,7 +249,7 @@ export const authService = {
             globalUsers[idx].chats = chats;
         }
     } else {
-        // Self-repair: add if missing (rare case)
+        // Self-repair
         globalUsers.push({
             name: user.name,
             email: user.email,
