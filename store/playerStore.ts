@@ -96,7 +96,7 @@ export const usePlayerStore = create<PlayerState>()(
           isPlaying: true,
           isBuffering: true, 
           queue: newQueue ? newQueue : state.queue,
-          isFullScreen: true,
+          isFullScreen: false, // Changed: Do not auto-open full player
         }));
       },
 

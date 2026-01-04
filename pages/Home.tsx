@@ -6,27 +6,54 @@ import { Bell, History, Settings, Play, UserCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SongCard } from '../components/SongCard';
 
+// Skeleton Component
+const SkeletonCard: React.FC<{ round?: boolean }> = ({ round = false }) => (
+  <div className="bg-[#181818]/60 p-3 rounded-xl w-[160px] md:w-[180px] shrink-0 border border-white/5 animate-pulse">
+    <div className={`w-full aspect-square mb-3 bg-white/10 ${round ? 'rounded-full' : 'rounded-lg'}`}></div>
+    <div className="flex flex-col gap-2">
+      <div className="h-4 bg-white/10 rounded w-3/4"></div>
+      <div className="h-3 bg-white/5 rounded w-1/2"></div>
+    </div>
+  </div>
+);
+
+const SkeletonShortcut: React.FC = () => (
+  <div className="glass-card flex items-center gap-0 h-[48px] overflow-hidden rounded-[4px] bg-[#2A2A2A] animate-pulse">
+     <div className="h-[48px] w-[48px] bg-white/10 shrink-0"></div>
+     <div className="flex-1 px-2">
+         <div className="h-3 bg-white/10 rounded w-3/4"></div>
+     </div>
+  </div>
+);
+
 export const Home: React.FC = () => {
   const [daylist, setDaylist] = useState<Song[]>([]);
   const [recent, setRecent] = useState<(Song | Album)[]>([]); 
   const { history, playSong, currentUser } = usePlayerStore();
   const navigate = useNavigate();
-  const [greeting, setGreeting] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good morning');
-    else if (hour < 18) setGreeting('Good afternoon');
-    else setGreeting('Good evening');
-
-    let query = 'Top Hits 2024';
-    if (hour >= 5 && hour < 12) query = 'Morning Acoustic';
-    else if (hour >= 12 && hour < 17) query = 'Upbeat Pop';
-    else query = 'Late Night Vibes';
-
+    // Only fetch if we need to, simulating instant load if cached data existed
+    // But since this is a demo, we will refetch but show skeletons
     const fetchData = async () => {
-      const songs = await api.searchSongs(query);
-      setDaylist(songs);
+      setIsLoading(true);
+      const hour = new Date().getHours();
+      let query = 'Top Hits 2024';
+      if (hour >= 5 && hour < 12) query = 'Morning Acoustic';
+      else if (hour >= 12 && hour < 17) query = 'Upbeat Pop';
+      else query = 'Late Night Vibes';
+
+      try {
+        const songs = await api.searchSongs(query);
+        // Artificial delay for smoothness if network is too fast (prevents flicker)
+        await new Promise(r => setTimeout(r, 400));
+        setDaylist(songs);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchData();
   }, []);
@@ -79,12 +106,10 @@ export const Home: React.FC = () => {
   };
 
   return (
-    <div className={`flex flex-col gap-6 min-h-full pb-36 pt-2 relative`}>
-      {/* Background Gradient */}
-      <div className="fixed top-0 left-0 right-0 h-[300px] bg-gradient-to-b from-[#1E1E1E] to-[#121212] -z-10"></div>
-
+    <div className={`flex flex-col gap-6 min-h-full pb-36 pt-2 relative bg-black`}>
+      
       {/* Top Header */}
-      <div className="px-4 pt-4 flex items-center justify-start gap-3 sticky top-0 z-20 py-2 bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+      <div className="px-4 pt-4 flex items-center justify-start gap-3 sticky top-0 z-20 py-2 bg-black/80 backdrop-blur-md transition-all">
          {/* Profile Icon */}
          <div 
             onClick={handleProfileClick}
@@ -110,14 +135,19 @@ export const Home: React.FC = () => {
           <h2 className="text-2xl font-bold text-white mb-4">Jump back in</h2>
           <div className="grid grid-cols-2 gap-2">
             <ShortcutCard title="Liked Songs" isLikedSongs onClick={() => navigate('/library')} />
-            {recent.slice(0, 5).map((item, idx) => (
-                <ShortcutCard 
-                    key={item.id + idx} 
-                    title={item.name} 
-                    image={getImageUrl(item.image)}
-                    onClick={() => item.type === 'song' ? playSong(item as Song, [item as Song]) : navigate(`/album/${item.id}`)}
-                />
-            ))}
+            {isLoading || recent.length === 0 ? (
+                // Skeleton Shortcuts
+                Array(5).fill(0).map((_, i) => <SkeletonShortcut key={i} />)
+            ) : (
+                recent.slice(0, 5).map((item, idx) => (
+                    <ShortcutCard 
+                        key={item.id + idx} 
+                        title={item.name} 
+                        image={getImageUrl(item.image)}
+                        onClick={() => item.type === 'song' ? playSong(item as Song, [item as Song]) : navigate(`/album/${item.id}`)}
+                    />
+                ))
+            )}
           </div>
       </div>
 
@@ -125,11 +155,15 @@ export const Home: React.FC = () => {
       <section className="mt-2">
         <SectionTitle title="Made For You" />
         <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {daylist.map((item, i) => (
-                <div key={i} className="snap-start">
-                    <SongCard item={item} onPlay={() => playSong(item, daylist)} />
-                </div>
-            ))}
+            {isLoading ? (
+                 Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
+            ) : (
+                 daylist.map((item, i) => (
+                    <div key={i} className="snap-start">
+                        <SongCard item={item} onPlay={() => playSong(item, daylist)} />
+                    </div>
+                 ))
+            )}
         </div>
       </section>
 
@@ -137,11 +171,15 @@ export const Home: React.FC = () => {
        <section>
         <SectionTitle title="Your favorite artists" />
         <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {daylist.slice(0,6).map((item, i) => (
-                <div key={i} className="snap-start">
-                    <SongCard item={item} round={true} />
-                </div>
-            ))}
+            {isLoading ? (
+                 Array(6).fill(0).map((_, i) => <SkeletonCard key={i} round={true} />)
+            ) : (
+                 daylist.slice(0,6).map((item, i) => (
+                    <div key={i} className="snap-start">
+                        <SongCard item={item} round={true} />
+                    </div>
+                 ))
+            )}
         </div>
       </section>
       
@@ -149,11 +187,15 @@ export const Home: React.FC = () => {
       <section>
         <SectionTitle title="Recently played" />
         <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {recent.length > 0 ? recent.map((item, i) => (
-                <div key={i} className="snap-start">
-                    <SongCard item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
-                </div>
-            )) : (
+            {isLoading ? (
+                 Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)
+            ) : recent.length > 0 ? (
+                recent.map((item, i) => (
+                    <div key={i} className="snap-start">
+                        <SongCard item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
+                    </div>
+                ))
+            ) : (
                  <div className="text-[#B3B3B3] text-sm px-4 h-[100px] flex items-center">Play some music to see it here.</div>
             )}
         </div>
