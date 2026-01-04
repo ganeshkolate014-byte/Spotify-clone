@@ -1,9 +1,10 @@
-import { User } from '../types';
+import { User, FriendRequest, Song } from '../types';
 
 const CLOUD_NAME = 'dj5hhott5';
 const UPLOAD_PRESET = 'My smallest server';
+const GLOBAL_INDEX_ID = 'vibestream_users_index';
 
-// Simple Hashing using Web Crypto API
+// Simple Hashing
 export const hashPassword = async (password: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -11,93 +12,161 @@ export const hashPassword = async (password: string): Promise<string> => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Generate a filename based on email to simulate a primary key
 const generateUserFilename = (email: string) => {
   return `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
 };
 
+// Helper to save any JSON to Cloudinary
+const uploadJson = async (data: any, publicId: string) => {
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const file = new File([blob], `${publicId}.json`, { type: 'application/json' });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', UPLOAD_PRESET);
+    formData.append('cloud_name', CLOUD_NAME);
+    formData.append('public_id', publicId);
+    formData.append('resource_type', 'raw');
+    formData.append('overwrite', 'true');
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+};
+
+// Helper to fetch any JSON
+const fetchJson = async (publicId: string) => {
+    const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${publicId}.json`;
+    const res = await fetch(url + `?t=${Date.now()}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('Fetch failed');
+    return await res.json();
+};
+
 export const authService = {
-  // Sign Up: Uploads a JSON file to Cloudinary with user data
+  // 1. Sign Up (with Global Index update)
   signup: async (name: string, email: string, password: string): Promise<User> => {
+    // Check if user exists first by trying to fetch their file
+    const existing = await fetchJson(generateUserFilename(email));
+    if (existing) throw new Error('User already exists.');
+
     const passwordHash = await hashPassword(password);
     
     const user: User = {
       name,
       email,
       passwordHash,
-      playlists: []
+      playlists: [],
+      friends: [],
+      friendRequests: [],
+      currentActivity: { song: null, timestamp: Date.now(), status: 'online' }
     };
 
-    // Convert user object to a Blob (JSON file)
-    const blob = new Blob([JSON.stringify(user)], { type: 'application/json' });
-    const file = new File([blob], `${generateUserFilename(email)}.json`, { type: 'application/json' });
+    // Upload User File
+    await uploadJson(user, generateUserFilename(email));
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    formData.append('cloud_name', CLOUD_NAME);
-    formData.append('public_id', generateUserFilename(email)); // Attempt to enforce ID
-    formData.append('resource_type', 'raw'); // Important for JSON
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Signup failed. Email might be taken or server error.');
+    // Update Global Index (for Search)
+    // Note: In production, this is a race condition. For this demo, it's acceptable.
+    try {
+        let index = await fetchJson(GLOBAL_INDEX_ID) || [];
+        if (!Array.isArray(index)) index = [];
+        index.push({ name, email, image: '' });
+        await uploadJson(index, GLOBAL_INDEX_ID);
+    } catch (e) {
+        console.warn("Failed to update global index", e);
     }
 
     return user;
   },
 
-  // Login: Tries to fetch the JSON file from Cloudinary URL pattern
+  // 2. Login
   login: async (email: string, password: string): Promise<User> => {
-    // Construct the URL where the file SHOULD be if the user exists
-    // Note: In a real Cloudinary setup, 'raw' files are accessible via url.
-    // We might need to handle versioning, but usually the latest is available at the public_id url.
-    const publicId = generateUserFilename(email);
-    // Cloudinary Raw URL structure
-    const url = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/${publicId}.json`;
+    const userData: User = await fetchJson(generateUserFilename(email));
+    if (!userData) throw new Error('User not found.');
 
-    try {
-        const response = await fetch(url + `?t=${Date.now()}`); // Cache bust
+    const inputHash = await hashPassword(password);
+    if (userData.passwordHash !== inputHash) throw new Error('Invalid password.');
 
-        if (response.status === 404) {
-            throw new Error('User not found.');
-        }
+    return userData;
+  },
 
-        const userData: User = await response.json();
-        const inputHash = await hashPassword(password);
-
-        if (userData.passwordHash !== inputHash) {
-            throw new Error('Invalid password.');
-        }
-
-        return userData;
-
-    } catch (error) {
-        console.error("Login Error", error);
-        throw error;
+  // 3. Sync User (General Update)
+  syncUser: async (user: User): Promise<void> => {
+    await uploadJson(user, generateUserFilename(user.email));
+    
+    // Also update index image if changed
+    if (user.image) {
+         try {
+            let index = await fetchJson(GLOBAL_INDEX_ID) || [];
+            const idx = index.findIndex((u: any) => u.email === user.email);
+            if (idx !== -1) {
+                index[idx].image = user.image;
+                index[idx].name = user.name;
+                await uploadJson(index, GLOBAL_INDEX_ID);
+            }
+        } catch (e) { console.warn("Index update failed", e); }
     }
   },
 
-  // Update User Data (Sync Playlists)
-  syncUser: async (user: User): Promise<void> => {
-    const blob = new Blob([JSON.stringify(user)], { type: 'application/json' });
-    const file = new File([blob], `${generateUserFilename(user.email)}.json`, { type: 'application/json' });
+  // 4. Search Users
+  searchUsers: async (query: string): Promise<{ name: string, email: string, image?: string }[]> => {
+      const index = await fetchJson(GLOBAL_INDEX_ID);
+      if (!index || !Array.isArray(index)) return [];
+      
+      const lowerQ = query.toLowerCase();
+      return index.filter((u: any) => u.name.toLowerCase().includes(lowerQ));
+  },
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    formData.append('cloud_name', CLOUD_NAME);
-    formData.append('public_id', generateUserFilename(user.email));
-    formData.append('resource_type', 'raw');
-    formData.append('overwrite', 'true'); // Overwrite existing user file
+  // 5. Send Friend Request
+  sendFriendRequest: async (toEmail: string, fromUser: User) => {
+      const targetUser: User = await fetchJson(generateUserFilename(toEmail));
+      if (!targetUser) throw new Error("User not found");
 
-    await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
-      method: 'POST',
-      body: formData,
-    });
+      // Check if already friends or requested
+      if (targetUser.friends.includes(fromUser.email)) throw new Error("Already friends");
+      if (targetUser.friendRequests.some(r => r.fromEmail === fromUser.email)) throw new Error("Request already sent");
+
+      const req: FriendRequest = {
+          fromEmail: fromUser.email,
+          fromName: fromUser.name,
+          fromImage: fromUser.image,
+          timestamp: Date.now()
+      };
+
+      targetUser.friendRequests.push(req);
+      await uploadJson(targetUser, generateUserFilename(toEmail));
+  },
+
+  // 6. Accept Friend Request
+  acceptFriendRequest: async (requestFromEmail: string, currentUser: User) => {
+      // 1. Update Current User
+      // Remove request, add to friends
+      const newReqs = currentUser.friendRequests.filter(r => r.fromEmail !== requestFromEmail);
+      if (!currentUser.friends.includes(requestFromEmail)) {
+          currentUser.friends.push(requestFromEmail);
+      }
+      currentUser.friendRequests = newReqs;
+      await uploadJson(currentUser, generateUserFilename(currentUser.email));
+
+      // 2. Update the Sender User
+      try {
+          const sender: User = await fetchJson(generateUserFilename(requestFromEmail));
+          if (sender && !sender.friends.includes(currentUser.email)) {
+              sender.friends.push(currentUser.email);
+              await uploadJson(sender, generateUserFilename(requestFromEmail));
+          }
+      } catch (e) {
+          console.error("Failed to update sender friend list", e);
+      }
+      
+      return currentUser;
+  },
+
+  // 7. Get Friends' Data (for Activity Feed)
+  getFriendsActivity: async (friendEmails: string[]) => {
+      const promises = friendEmails.map(email => fetchJson(generateUserFilename(email)));
+      const users = await Promise.all(promises);
+      return users.filter(u => u !== null) as User[];
   }
 };

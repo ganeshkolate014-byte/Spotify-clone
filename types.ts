@@ -75,30 +75,48 @@ export interface UserPlaylist extends Playlist {
   creator?: string; // email or id
 }
 
+export interface FriendRequest {
+  fromEmail: string;
+  fromName: string;
+  fromImage?: string;
+  timestamp: number;
+}
+
 export interface User {
   email: string;
   passwordHash: string; // Encrypted
   name: string; // Acts as Username
   image?: string; // Profile picture URL
   playlists: UserPlaylist[];
+  
+  // Social Fields
+  friends: string[]; // List of friend emails
+  friendRequests: FriendRequest[];
+  
+  // Real-time Status (Synced to cloud)
+  currentActivity?: {
+    song: Song | null;
+    timestamp: number;
+    status: 'online' | 'offline' | 'listening';
+  };
 }
 
 // --- SOCIAL FEATURES ---
 
 export interface ChatMessage {
   id: string;
-  senderId: string;
+  senderId: string; // email
   text: string;
   timestamp: number;
-  isSystem?: boolean; // For "Started a party" messages
+  isSystem?: boolean; 
 }
 
 export interface Friend {
-  id: string;
+  id: string; // email
   name: string;
   image: string;
   status: 'online' | 'offline' | 'listening';
-  currentSong?: Song | null; // What they are listening to
+  currentSong?: Song | null; 
   lastActive: number;
   chatHistory: ChatMessage[];
 }
@@ -107,7 +125,7 @@ export interface PartySession {
   isActive: boolean;
   hostId: string;
   hostName: string;
-  listeners: string[]; // IDs of people listening
+  listeners: string[]; 
 }
 
 // Unified type for grid display

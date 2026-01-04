@@ -1,64 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession } from '../types';
+import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession, FriendRequest } from '../types';
 import { authService } from '../services/auth';
-
-// Mock Data for Friends to demonstrate UI
-const MOCK_FRIENDS: Friend[] = [
-  {
-    id: 'f1',
-    name: 'Anjali Sharma',
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
-    status: 'listening',
-    lastActive: Date.now(),
-    currentSong: {
-      id: 'mock1',
-      name: 'Kesariya',
-      type: 'song',
-      album: { id: 'a1', name: 'Brahmastra', url: '' },
-      year: '2022',
-      duration: '292',
-      language: 'Hindi',
-      genre: 'Pop',
-      image: [{ quality: 'high', url: 'https://c.saavncdn.com/191/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg' }],
-      artists: { primary: [{ id: 'ar1', name: 'Arijit Singh', role: 'Singer', image: [] }], featured: [], all: [] },
-      downloadUrl: []
-    },
-    chatHistory: [
-      { id: 'm1', senderId: 'f1', text: 'Have you heard this new track?', timestamp: Date.now() - 100000 }
-    ]
-  },
-  {
-    id: 'f2',
-    name: 'Rahul Verma',
-    image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
-    status: 'online',
-    lastActive: Date.now(),
-    currentSong: null,
-    chatHistory: []
-  },
-  {
-    id: 'f3',
-    name: 'Priya Patel',
-    image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-    status: 'listening',
-    lastActive: Date.now(),
-    currentSong: {
-      id: 'mock2',
-      name: 'Starboy',
-      type: 'song',
-      album: { id: 'a2', name: 'Starboy', url: '' },
-      year: '2016',
-      duration: '230',
-      language: 'English',
-      genre: 'Pop',
-      image: [{ quality: 'high', url: 'https://i.scdn.co/image/ab67616d0000b2734718e28d24527d9774635ded' }],
-      artists: { primary: [{ id: 'ar2', name: 'The Weeknd', role: 'Singer', image: [] }], featured: [], all: [] },
-      downloadUrl: []
-    },
-    chatHistory: []
-  }
-];
 
 interface PlayerState {
   isPlaying: boolean;
@@ -76,7 +19,9 @@ interface PlayerState {
   currentUser: User | null;
 
   // Social
-  friends: Friend[];
+  friends: Friend[]; // Mapped from currentUser.friends
+  friendRequests: FriendRequest[];
+  searchResults: { name: string, email: string, image?: string }[];
   activeChatFriendId: string | null;
   partySession: PartySession | null;
 
@@ -104,6 +49,10 @@ interface PlayerState {
   updateUserProfile: (name: string, image?: string) => void;
 
   // Social Actions
+  searchUsers: (query: string) => Promise<void>;
+  sendFriendRequest: (toEmail: string) => Promise<void>;
+  acceptFriendRequest: (fromEmail: string) => Promise<void>;
+  refreshFriendsActivity: () => Promise<void>;
   openChat: (friendId: string | null) => void;
   sendMessage: (friendId: string, text: string) => void;
   startParty: () => void;
@@ -126,17 +75,29 @@ export const usePlayerStore = create<PlayerState>()(
       currentUser: null,
       
       // Social Initial State
-      friends: MOCK_FRIENDS,
+      friends: [],
+      friendRequests: [],
+      searchResults: [],
       activeChatFriendId: null,
       partySession: null,
 
       playSong: (song, newQueue) => {
-        const { addToHistory, partySession } = get();
+        const { addToHistory, partySession, currentUser } = get();
         addToHistory(song);
         
-        // If hosting a party, this song would theoretically sync to others here
-        if (partySession && partySession.hostId === 'me') {
-            console.log("Broadcasting song change to party...");
+        // Update Cloud Status for Friends to see
+        if (currentUser) {
+            const updatedUser = { 
+                ...currentUser, 
+                currentActivity: {
+                    song: song,
+                    timestamp: Date.now(),
+                    status: 'listening' as const
+                } 
+            };
+            set({ currentUser: updatedUser });
+            // Sync quietly
+            authService.syncUser(updatedUser).catch(console.error);
         }
 
         set((state) => ({
@@ -157,51 +118,28 @@ export const usePlayerStore = create<PlayerState>()(
       nextSong: () => {
         const { queue, currentSong, isShuffling } = get();
         if (!currentSong) return;
-
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-        let nextIndex;
-        if (isShuffling) {
-           nextIndex = Math.floor(Math.random() * queue.length);
-        } else {
-           nextIndex = currentIndex + 1;
-        }
-
-        if (nextIndex < queue.length) {
-          get().playSong(queue[nextIndex]);
-        } else {
-          set({ isPlaying: false });
-        }
+        let nextIndex = isShuffling ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
+        if (nextIndex < queue.length) get().playSong(queue[nextIndex]);
+        else set({ isPlaying: false });
       },
 
       prevSong: () => {
         const { queue, currentSong } = get();
         if (!currentSong) return;
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-        const prevIndex = currentIndex - 1;
-
-        if (prevIndex >= 0) {
-          get().playSong(queue[prevIndex]);
-        }
+        if (currentIndex - 1 >= 0) get().playSong(queue[currentIndex - 1]);
       },
 
       addToQueue: (song) => set((state) => ({ queue: [...state.queue, song] })),
       setQueue: (songs) => set({ queue: songs }),
       setVolume: (volume) => set({ volume }),
 
-      addToHistory: (song) => set((state) => {
-        const newHistory = [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20);
-        return { history: newHistory };
-      }),
+      addToHistory: (song) => set((state) => ({ history: [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20) })),
 
       toggleLike: (song) => set((state) => {
         const isLiked = state.likedSongs.some(s => s.id === song.id);
-        let newLiked;
-        if (isLiked) {
-          newLiked = state.likedSongs.filter(s => s.id !== song.id);
-        } else {
-          newLiked = [song, ...state.likedSongs];
-        }
-        return { likedSongs: newLiked };
+        return { likedSongs: isLiked ? state.likedSongs.filter(s => s.id !== song.id) : [song, ...state.likedSongs] };
       }),
 
       createPlaylist: (playlist) => {
@@ -225,7 +163,6 @@ export const usePlayerStore = create<PlayerState>()(
             }
             return p;
           });
-
           if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
              authService.syncUser(updatedUser).catch(console.error);
@@ -247,22 +184,26 @@ export const usePlayerStore = create<PlayerState>()(
         });
       },
 
-      loginUser: (user) => set({ 
-        currentUser: user, 
-        userPlaylists: user.playlists || []
-      }),
+      loginUser: (user) => {
+          set({ 
+            currentUser: user, 
+            userPlaylists: user.playlists || [],
+            friendRequests: user.friendRequests || []
+          });
+          get().refreshFriendsActivity();
+      },
 
       logoutUser: () => set({ 
         currentUser: null, 
         userPlaylists: [],
+        friends: [],
+        friendRequests: [],
         partySession: null
       }),
       
       syncUserToCloud: async () => {
          const { currentUser } = get();
-         if (currentUser) {
-            await authService.syncUser(currentUser);
-         }
+         if (currentUser) await authService.syncUser(currentUser);
       },
 
       updateUserProfile: (name, image) => {
@@ -280,12 +221,66 @@ export const usePlayerStore = create<PlayerState>()(
 
       // --- SOCIAL ACTIONS ---
 
+      searchUsers: async (query) => {
+          try {
+              const results = await authService.searchUsers(query);
+              // Filter out self
+              const { currentUser } = get();
+              const filtered = results.filter(u => u.email !== currentUser?.email);
+              set({ searchResults: filtered });
+          } catch (e) {
+              console.error(e);
+          }
+      },
+
+      sendFriendRequest: async (toEmail) => {
+          const { currentUser } = get();
+          if (!currentUser) return;
+          await authService.sendFriendRequest(toEmail, currentUser);
+          // Optimistic UI update? No, wait for refresh.
+      },
+
+      acceptFriendRequest: async (fromEmail) => {
+          const { currentUser } = get();
+          if (!currentUser) return;
+          const updatedUser = await authService.acceptFriendRequest(fromEmail, currentUser);
+          set({ currentUser: updatedUser, friendRequests: updatedUser.friendRequests });
+          get().refreshFriendsActivity();
+      },
+
+      refreshFriendsActivity: async () => {
+          const { currentUser } = get();
+          if (!currentUser || !currentUser.friends || currentUser.friends.length === 0) {
+              set({ friends: [] });
+              return;
+          }
+
+          try {
+              const rawFriends = await authService.getFriendsActivity(currentUser.friends);
+              
+              // Map raw User objects to the UI Friend type
+              const mappedFriends: Friend[] = rawFriends.map(u => ({
+                  id: u.email,
+                  name: u.name,
+                  image: u.image || 'https://via.placeholder.com/150',
+                  status: u.currentActivity?.status || 'offline',
+                  currentSong: u.currentActivity?.song || null,
+                  lastActive: u.currentActivity?.timestamp || 0,
+                  chatHistory: [] // Chat history would require a separate persisted file, skipping for this demo complexity
+              }));
+              
+              set({ friends: mappedFriends });
+          } catch (e) {
+              console.error("Failed to refresh friends", e);
+          }
+      },
+
       openChat: (friendId) => set({ activeChatFriendId: friendId }),
 
       sendMessage: (friendId, text) => set((state) => {
         const newMessage: ChatMessage = {
           id: `msg-${Date.now()}`,
-          senderId: 'me',
+          senderId: state.currentUser?.email || 'me',
           text,
           timestamp: Date.now()
         };
@@ -296,27 +291,6 @@ export const usePlayerStore = create<PlayerState>()(
           }
           return f;
         });
-
-        // Mock Reply for demo
-        setTimeout(() => {
-            get().openChat(friendId); // refresh
-            set(prev => ({
-                friends: prev.friends.map(f => {
-                    if (f.id === friendId) {
-                         return {
-                             ...f,
-                             chatHistory: [...f.chatHistory, {
-                                 id: `reply-${Date.now()}`,
-                                 senderId: f.id,
-                                 text: 'That sounds awesome! Let\'s listen together.',
-                                 timestamp: Date.now()
-                             }]
-                         }
-                    }
-                    return f;
-                })
-            }))
-        }, 1500);
 
         return { friends: updatedFriends };
       }),
@@ -343,7 +317,7 @@ export const usePlayerStore = create<PlayerState>()(
         likedSongs: state.likedSongs,
         userPlaylists: state.userPlaylists,
         currentUser: state.currentUser,
-        friends: state.friends // Persist mock friends for demo consistency
+        friends: state.friends // Persist friends locally
       }), 
     }
   )
