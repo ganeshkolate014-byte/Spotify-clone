@@ -19,6 +19,7 @@ import { Signup } from './pages/Signup';
 import { Profile } from './pages/Profile';
 import { Social } from './pages/Social';
 import { ArtistSelection } from './pages/ArtistSelection';
+import { WhyUs } from './pages/WhyUs';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePlayerStore } from './store/playerStore';
 import { WifiOff } from 'lucide-react';
@@ -49,6 +50,7 @@ const AnimatedRoutes: React.FC = () => {
         <Route path="/search" element={<PageTransition><Search /></PageTransition>} />
         <Route path="/library" element={<PageTransition><Library /></PageTransition>} />
         <Route path="/social" element={<PageTransition><Social /></PageTransition>} />
+        <Route path="/why-us" element={<PageTransition><WhyUs /></PageTransition>} />
         <Route path="/album/:id" element={<PageTransition><AlbumDetails /></PageTransition>} />
         <Route path="/artist/:id" element={<PageTransition><ArtistDetails /></PageTransition>} />
         <Route path="/playlist/:id" element={<PageTransition><PlaylistDetails /></PageTransition>} />

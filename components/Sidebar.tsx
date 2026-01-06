@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library, Plus, ArrowRight, Heart, Music, UserCircle, LogOut, Sparkles } from 'lucide-react';
+import { Home, Search, Library, Plus, ArrowRight, Heart, Music, UserCircle, LogOut, Sparkles, Rocket } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { getImageUrl } from '../services/api';
@@ -36,6 +36,14 @@ export const Sidebar: React.FC = () => {
              <motion.div whileHover={{ x: 4 }} className="flex items-center gap-5 w-full">
                <Search size={24} strokeWidth={isActive ? 3 : 2} />
                <span>Search</span>
+             </motion.div>
+          )}
+        </NavLink>
+        <NavLink to="/why-us" className={({ isActive }) => `${baseClass} ${isActive ? activeClass : ''}`}>
+          {({ isActive }) => (
+             <motion.div whileHover={{ x: 4 }} className="flex items-center gap-5 w-full">
+               <Rocket size={24} className={isActive ? "text-[#1DB954]" : ""} />
+               <span className={isActive ? "text-[#1DB954]" : ""}>Why us?</span>
              </motion.div>
           )}
         </NavLink>

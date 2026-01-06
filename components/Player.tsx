@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Timer, X, Copy, Info } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
-import { getImageUrl, getAudioUrl, getOfflineAudioUrl } from '../services/api';
+import { api, getImageUrl, getAudioUrl, getOfflineAudioUrl } from '../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DownloadQualityModal } from './DownloadQualityModal';
 import { Song } from '../types';
@@ -25,6 +25,7 @@ export const Player: React.FC = () => {
     streamingQuality,
     isOfflineMode,
     downloadedSongIds,
+    addToQueue
   } = usePlayerStore();
 
   const navigate = useNavigate();
@@ -37,13 +38,17 @@ export const Player: React.FC = () => {
   
   const [downloadSong, setDownloadSong] = useState<Song | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
+  
+  // New States for enhanced features
+  const [sleepTimerId, setSleepTimerId] = useState<number | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
 
   const isLiked = currentSong ? likedSongs.some(s => s.id === currentSong.id) : false;
   const isDownloaded = currentSong ? downloadedSongIds.includes(currentSong.id) : false;
 
+  // Extract color from image
   useEffect(() => {
     if (!currentSong) return;
     const imgUrl = getImageUrl(currentSong.image);
@@ -68,24 +73,28 @@ export const Player: React.FC = () => {
     img.onerror = () => setDominantColor('#181818');
   }, [currentSong?.id]);
 
-  // MEDIA SESSION API INTEGRATION
+  // MEDIA SESSION API INTEGRATION (Notification Poster)
   useEffect(() => {
     if (!currentSong || !('mediaSession' in navigator)) return;
 
-    // 1. Set Metadata for Notification Center
     const artistName = currentSong.artists?.primary?.[0]?.name || "Unknown";
+    // Get the high-quality image for the notification poster
+    const hqImage = getImageUrl(currentSong.image);
+
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentSong.name,
       artist: artistName,
       album: currentSong.album?.name || "Single",
-      artwork: currentSong.image.map(img => ({ 
-        src: img.url, 
-        sizes: '512x512', 
-        type: 'image/png' 
-      }))
+      artwork: [
+          { src: hqImage, sizes: '96x96', type: 'image/jpeg' },
+          { src: hqImage, sizes: '128x128', type: 'image/jpeg' },
+          { src: hqImage, sizes: '192x192', type: 'image/jpeg' },
+          { src: hqImage, sizes: '256x256', type: 'image/jpeg' },
+          { src: hqImage, sizes: '384x384', type: 'image/jpeg' },
+          { src: hqImage, sizes: '512x512', type: 'image/jpeg' },
+      ]
     });
 
-    // 2. Set Action Handlers
     navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
     navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
     navigator.mediaSession.setActionHandler('previoustrack', prevSong);
@@ -105,6 +114,7 @@ export const Player: React.FC = () => {
       }
   }, [isPlaying]);
 
+  // Audio Source Logic
   useEffect(() => {
     if (!currentSong || !audioRef.current) return;
     
@@ -145,7 +155,6 @@ export const Player: React.FC = () => {
       setProgress(currentTime);
       setDuration(duration);
 
-      // Update System Notification Progress Bar
       if ('mediaSession' in navigator && duration > 0 && !isNaN(duration)) {
           try {
             navigator.mediaSession.setPositionState({
@@ -153,9 +162,7 @@ export const Player: React.FC = () => {
                 playbackRate: audioRef.current.playbackRate,
                 position: currentTime
             });
-          } catch (e) {
-              // Ignore errors
-          }
+          } catch (e) {}
       }
     }
   };
@@ -173,6 +180,81 @@ export const Player: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Helper to show temporary messages
+  const showToast = (msg: string) => {
+      setToastMessage(msg);
+      setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // --- ACTIONS FOR MORE MENU ---
+  const handleAddToQueue = () => {
+      if(currentSong) {
+          addToQueue(currentSong);
+          showToast("Added to queue");
+          setIsMoreMenuOpen(false);
+      }
+  };
+
+  const handleShare = async () => {
+      if(!currentSong) return;
+      const shareData = {
+          title: currentSong.name,
+          text: `Listen to ${currentSong.name} by ${currentSong.artists.primary[0].name}`,
+          url: window.location.href
+      };
+      
+      if (navigator.share) {
+          try {
+              await navigator.share(shareData);
+          } catch(e) { console.log(e); }
+      } else {
+          navigator.clipboard.writeText(shareData.url);
+          showToast("Link copied to clipboard");
+      }
+      setIsMoreMenuOpen(false);
+  };
+
+  const handleSleepTimer = () => {
+      if (sleepTimerId) {
+          clearTimeout(sleepTimerId);
+          setSleepTimerId(null);
+          showToast("Sleep timer turned off");
+      } else {
+          // Set for 30 mins
+          const id = window.setTimeout(() => {
+              setIsPlaying(false);
+              setSleepTimerId(null);
+          }, 30 * 60 * 1000); 
+          setSleepTimerId(id);
+          showToast("Sleep timer set for 30 minutes");
+      }
+      setIsMoreMenuOpen(false);
+  };
+
+  const handleGoToRadio = async () => {
+      if(!currentSong) return;
+      setIsMoreMenuOpen(false);
+      showToast(`Starting radio for ${currentSong.name}`);
+      
+      try {
+         // Fetch recommendations (mocked by searching artist)
+         const query = currentSong.artists.primary[0]?.name || currentSong.name;
+         const songs = await api.searchSongs(query);
+         const newSongs = songs.filter(s => s.id !== currentSong.id);
+         
+         if (newSongs.length > 0) {
+             // Add first 10 to queue
+             newSongs.slice(0, 10).forEach(s => addToQueue(s));
+             showToast(`Added ${Math.min(newSongs.length, 10)} songs to queue`);
+         } else {
+             showToast("No similar songs found");
+         }
+      } catch(e) {
+          console.error("Radio failed", e);
+          showToast("Failed to start radio");
+      }
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
   };
@@ -184,12 +266,10 @@ export const Player: React.FC = () => {
     const diffX = touchStart.x - touchEndX;
     const diffY = touchStart.y - touchEndY;
 
-    // Horizontal Swipe for Song Change
     if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > 0) nextSong();
       else prevSong();
     }
-    // Vertical Swipe Down to Close Player
     if (diffY < -80 && Math.abs(diffY) > Math.abs(diffX) && !isMoreMenuOpen) {
         setFullScreen(false);
     }
@@ -319,15 +399,29 @@ export const Player: React.FC = () => {
 
                             {/* Bottom Row */}
                             <div className="flex items-center justify-between px-4">
-                                <button onClick={() => setDownloadSong(currentSong)} className={`shrink-0 ${isDownloaded ? 'text-[#1DB954]' : 'text-white/50'}`}>
-                                    <Download size={22} />
+                                <button onClick={() => showToast("Lyrics coming soon")} className="text-white/50 shrink-0 hover:text-white transition-colors p-2">
+                                    <Mic2 size={22} />
                                 </button>
-                                <button className="text-white/50 shrink-0"><ListMusic size={22} /></button>
+                                <button className="text-white/50 shrink-0 hover:text-white transition-colors p-2"><ListMusic size={22} /></button>
                             </div>
                         </div>
                     </div>
 
-                    {/* More Menu (Swipe to Close) */}
+                    {/* Toast Notification */}
+                    <AnimatePresence>
+                        {toastMessage && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 20 }}
+                                className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[300] bg-white text-black px-6 py-3 rounded-full font-bold shadow-xl text-sm whitespace-nowrap"
+                            >
+                                {toastMessage}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* More Menu (Enhanced) */}
                     <AnimatePresence>
                         {isMoreMenuOpen && (
                             <motion.div 
@@ -346,23 +440,93 @@ export const Player: React.FC = () => {
                                             setIsMoreMenuOpen(false);
                                         }
                                     }}
-                                    className="bg-[#1E1E1E] rounded-t-2xl p-4 flex flex-col gap-4 pb-10"
+                                    className="bg-[#242424] rounded-t-2xl flex flex-col max-h-[80vh] overflow-y-auto pb-6"
                                     onClick={e => e.stopPropagation()}
                                 >
                                     {/* Drag Handle */}
-                                    <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-2 shrink-0"></div>
+                                    <div className="w-full flex justify-center pt-4 pb-2">
+                                        <div className="w-10 h-1 bg-white/20 rounded-full"></div>
+                                    </div>
                                     
-                                    <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-                                        <img src={getImageUrl(currentSong.image)} className="w-12 h-12 rounded-md object-cover" alt="" />
+                                    {/* Song Context Info */}
+                                    <div className="flex items-center gap-3 px-6 pb-4">
+                                        <img src={getImageUrl(currentSong.image)} className="w-12 h-12 rounded-md object-cover shadow-lg" alt="" />
                                         <div>
-                                            <div className="font-bold text-white">{currentSong.name}</div>
-                                            <div className="text-sm text-white/50">{primaryArtistName}</div>
+                                            <div className="font-bold text-white text-[15px]">{currentSong.name}</div>
+                                            <div className="text-sm text-white/60">{primaryArtistName}</div>
                                         </div>
                                     </div>
-                                    <button onClick={() => { setShowPlaylistSelector(true); setIsMoreMenuOpen(false); }} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><ListPlus /> Add to Playlist</button>
-                                    <button onClick={() => navigate(`/artist/${currentSong.artists.primary[0].id}`, { state: { artist: currentSong.artists.primary[0] } })} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><User /> View Artist</button>
-                                    <button onClick={() => navigate(`/album/${currentSong.album.id}`)} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><Disc /> View Album</button>
-                                    <button className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><Share2 /> Share</button>
+
+                                    {/* New Download Card UI */}
+                                    <div className="px-6 py-2">
+                                        <button 
+                                            onClick={() => { setDownloadSong(currentSong); setIsMoreMenuOpen(false); }} 
+                                            className={`w-full flex items-center justify-between p-4 rounded-xl font-bold transition-all active:scale-95 border ${
+                                                isDownloaded 
+                                                ? 'bg-[#1DB954] border-[#1DB954] text-black' 
+                                                : 'bg-[#333] border-white/5 text-white hover:bg-[#404040]'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                 <div className={`p-2 rounded-full ${isDownloaded ? 'bg-black/10' : 'bg-white/10'}`}>
+                                                    <Download size={20} />
+                                                 </div>
+                                                 <div className="flex flex-col items-start">
+                                                     <span className="text-sm">{isDownloaded ? 'Downloaded' : 'Download'}</span>
+                                                     <span className={`text-[10px] font-medium ${isDownloaded ? 'text-black/70' : 'text-white/50'}`}>
+                                                        {isDownloaded ? 'Available offline' : 'High Quality (320kbps)'}
+                                                     </span>
+                                                 </div>
+                                            </div>
+                                            {isDownloaded && <CheckCircle2 size={20} />}
+                                        </button>
+                                    </div>
+
+                                    {/* Menu Actions List */}
+                                    <div className="flex flex-col py-2">
+                                        
+                                        <button onClick={() => { toggleLike(currentSong); setIsMoreMenuOpen(false); showToast(isLiked ? "Removed from Liked Songs" : "Added to Liked Songs"); }} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Heart size={24} className={isLiked ? "text-[#1DB954] fill-[#1DB954]" : "text-white/80"} />
+                                            <span className="text-white font-medium">{isLiked ? 'Liked' : 'Like'}</span>
+                                        </button>
+
+                                        <button onClick={handleAddToQueue} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <ListPlus size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">Add to queue</span>
+                                        </button>
+
+                                        <button onClick={handleShare} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Share2 size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">Share</span>
+                                        </button>
+
+                                        <button onClick={() => { setIsMoreMenuOpen(false); navigate(`/artist/${currentSong.artists.primary[0].id}`, { state: { artist: currentSong.artists.primary[0] } }); }} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <User size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">View Artist</span>
+                                        </button>
+
+                                        <button onClick={() => { setIsMoreMenuOpen(false); navigate(`/album/${currentSong.album.id}`); }} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Disc size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">View Album</span>
+                                        </button>
+
+                                        <button onClick={handleSleepTimer} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Moon size={24} className={sleepTimerId ? "text-[#1DB954]" : "text-white/80"} />
+                                            <span className="text-white font-medium">{sleepTimerId ? 'Stop Sleep Timer' : 'Sleep Timer (30 mins)'}</span>
+                                        </button>
+                                        
+                                        <button onClick={handleGoToRadio} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Radio size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">Go to Song Radio</span>
+                                        </button>
+
+                                        <button onClick={() => showToast("Credits: Written by " + primaryArtistName)} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                            <Info size={24} className="text-white/80" />
+                                            <span className="text-white font-medium">Show credits</span>
+                                        </button>
+
+                                    </div>
+                                    
                                 </motion.div>
                             </motion.div>
                         )}
@@ -403,11 +567,19 @@ export const Player: React.FC = () => {
                         </div>
 
                         {/* Controls */}
-                        <div className="flex items-center gap-3 pr-1 shrink-0">
-                            <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong); }} className="shrink-0">
+                        <div className="flex items-center gap-1.5 pr-1 shrink-0">
+                            {/* Like Button */}
+                            <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong); }} className="shrink-0 p-1.5">
                                 <Heart size={20} fill={isLiked ? "#1DB954" : "none"} className={isLiked ? "text-[#1DB954]" : "text-white"} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="shrink-0">
+                            
+                            {/* Previous Button (Hidden on very small screens if needed, but fitting here) */}
+                            <button onClick={(e) => { e.stopPropagation(); prevSong(); }} className="shrink-0 p-1.5 text-white/90 hover:text-white">
+                                <SkipBack size={22} fill="white" />
+                            </button>
+
+                            {/* Play/Pause Button */}
+                            <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="shrink-0 p-1.5">
                                 {isBuffering ? (
                                     <Loader2 size={24} className="animate-spin text-white" />
                                 ) : isPlaying ? (
@@ -415,6 +587,11 @@ export const Player: React.FC = () => {
                                 ) : (
                                     <Play size={24} fill="white" className="text-white" />
                                 )}
+                            </button>
+
+                            {/* Next Button */}
+                            <button onClick={(e) => { e.stopPropagation(); nextSong(); }} className="shrink-0 p-1.5 text-white/90 hover:text-white">
+                                <SkipForward size={22} fill="white" />
                             </button>
                         </div>
                     </div>
