@@ -77,6 +77,43 @@ export const Player: React.FC = () => {
     img.onerror = () => setDominantColor('#181818');
   }, [currentSong?.id]);
 
+  // MEDIA SESSION API INTEGRATION
+  useEffect(() => {
+    if (!currentSong || !('mediaSession' in navigator)) return;
+
+    // 1. Set Metadata for Notification Center
+    const artistName = currentSong.artists?.primary?.[0]?.name || "Unknown";
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.name,
+      artist: artistName,
+      album: currentSong.album?.name || "Single",
+      artwork: currentSong.image.map(img => ({ 
+        src: img.url, 
+        sizes: '512x512', 
+        type: 'image/png' 
+      }))
+    });
+
+    // 2. Set Action Handlers
+    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+    navigator.mediaSession.setActionHandler('previoustrack', prevSong);
+    navigator.mediaSession.setActionHandler('nexttrack', nextSong);
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (audioRef.current && details.seekTime !== undefined) {
+            audioRef.current.currentTime = details.seekTime;
+            setProgress(details.seekTime);
+        }
+    });
+  }, [currentSong, setIsPlaying, prevSong, nextSong]);
+
+  // Sync Playback State with Media Session
+  useEffect(() => {
+      if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+      }
+  }, [isPlaying]);
+
   useEffect(() => {
     if (!currentSong || !audioRef.current) return;
     
@@ -111,8 +148,24 @@ export const Player: React.FC = () => {
 
   const handleTimeUpdate = () => {
     if (audioRef.current && !isDragging) {
-      setProgress(audioRef.current.currentTime);
-      setDuration(audioRef.current.duration || 0);
+      const currentTime = audioRef.current.currentTime;
+      const duration = audioRef.current.duration || 0;
+      
+      setProgress(currentTime);
+      setDuration(duration);
+
+      // Update System Notification Progress Bar
+      if ('mediaSession' in navigator && duration > 0 && !isNaN(duration)) {
+          try {
+            navigator.mediaSession.setPositionState({
+                duration: duration,
+                playbackRate: audioRef.current.playbackRate,
+                position: currentTime
+            });
+          } catch (e) {
+              // Ignore errors (e.g. if duration is not yet available)
+          }
+      }
     }
   };
 
