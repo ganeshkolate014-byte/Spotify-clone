@@ -1,9 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Timer, X, Copy, Info } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info, BellRing } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { api, getImageUrl, getAudioUrl, getOfflineAudioUrl } from '../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { DownloadQualityModal } from './DownloadQualityModal';
 import { Song } from '../types';
 import { useNavigate } from 'react-router-dom';
 
@@ -25,7 +24,8 @@ export const Player: React.FC = () => {
     streamingQuality,
     isOfflineMode,
     downloadedSongIds,
-    addToQueue
+    addToQueue,
+    startDownload
   } = usePlayerStore();
 
   const navigate = useNavigate();
@@ -36,12 +36,11 @@ export const Player: React.FC = () => {
   const [dominantColor, setDominantColor] = useState<string>('#121212');
   const [isDragging, setIsDragging] = useState(false);
   
-  const [downloadSong, setDownloadSong] = useState<Song | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isDownloadExpanded, setIsDownloadExpanded] = useState(false);
   
   // New States for enhanced features
   const [sleepTimerId, setSleepTimerId] = useState<number | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
 
@@ -147,6 +146,11 @@ export const Player: React.FC = () => {
     else if (!isPlaying && !audio.paused) audio.pause();
   }, [isPlaying]);
 
+  // Reset download expansion when menu closes or song changes
+  useEffect(() => {
+      if (!isMoreMenuOpen) setIsDownloadExpanded(false);
+  }, [isMoreMenuOpen, currentSong?.id]);
+
   const handleTimeUpdate = () => {
     if (audioRef.current && !isDragging) {
       const currentTime = audioRef.current.currentTime;
@@ -180,17 +184,10 @@ export const Player: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Helper to show temporary messages
-  const showToast = (msg: string) => {
-      setToastMessage(msg);
-      setTimeout(() => setToastMessage(null), 2500);
-  };
-
   // --- ACTIONS FOR MORE MENU ---
   const handleAddToQueue = () => {
       if(currentSong) {
           addToQueue(currentSong);
-          showToast("Added to queue");
           setIsMoreMenuOpen(false);
       }
   };
@@ -209,7 +206,6 @@ export const Player: React.FC = () => {
           } catch(e) { console.log(e); }
       } else {
           navigator.clipboard.writeText(shareData.url);
-          showToast("Link copied to clipboard");
       }
       setIsMoreMenuOpen(false);
   };
@@ -218,7 +214,6 @@ export const Player: React.FC = () => {
       if (sleepTimerId) {
           clearTimeout(sleepTimerId);
           setSleepTimerId(null);
-          showToast("Sleep timer turned off");
       } else {
           // Set for 30 mins
           const id = window.setTimeout(() => {
@@ -226,7 +221,6 @@ export const Player: React.FC = () => {
               setSleepTimerId(null);
           }, 30 * 60 * 1000); 
           setSleepTimerId(id);
-          showToast("Sleep timer set for 30 minutes");
       }
       setIsMoreMenuOpen(false);
   };
@@ -234,7 +228,6 @@ export const Player: React.FC = () => {
   const handleGoToRadio = async () => {
       if(!currentSong) return;
       setIsMoreMenuOpen(false);
-      showToast(`Starting radio for ${currentSong.name}`);
       
       try {
          // Fetch recommendations (mocked by searching artist)
@@ -245,14 +238,18 @@ export const Player: React.FC = () => {
          if (newSongs.length > 0) {
              // Add first 10 to queue
              newSongs.slice(0, 10).forEach(s => addToQueue(s));
-             showToast(`Added ${Math.min(newSongs.length, 10)} songs to queue`);
-         } else {
-             showToast("No similar songs found");
-         }
+         } 
       } catch(e) {
           console.error("Radio failed", e);
-          showToast("Failed to start radio");
       }
+  };
+
+  const handleDownloadSelect = (url: string, quality: string) => {
+      if(!currentSong) return;
+      const filename = `${currentSong.name} (${quality}) - ${currentSong.artists.primary[0]?.name || 'Artist'}.mp3`;
+      startDownload(currentSong, url, filename);
+      setIsMoreMenuOpen(false);
+      setIsDownloadExpanded(false);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -361,23 +358,42 @@ export const Player: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* Scrubber */}
-                            <div className="flex flex-col gap-2">
-                                <div className="relative h-1 w-full bg-white/20 rounded-full group hover:h-1.5 transition-all">
-                                     <div className="absolute left-0 top-0 bottom-0 bg-white rounded-full" style={{ width: `${(progress / (duration || 1)) * 100}%` }}>
-                                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100"></div>
+                            {/* Scrubber - Improved Hit Area */}
+                            <div className="flex flex-col gap-2 pt-2">
+                                {/* Container with larger height for touch target */}
+                                <div className="relative h-6 w-full flex items-center group cursor-pointer">
+                                     
+                                     {/* Background Track */}
+                                     <div className="absolute left-0 right-0 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                         {/* Progress Fill */}
+                                         <div 
+                                            className="h-full bg-white rounded-full transition-all duration-75 ease-out" 
+                                            style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+                                         />
                                      </div>
+
+                                     {/* Thumb (Dot) - Positioned based on progress */}
+                                     <div 
+                                        className="absolute h-3.5 w-3.5 bg-white rounded-full shadow-md scale-100 transition-transform active:scale-125 z-10 pointer-events-none"
+                                        style={{ left: `calc(${(progress / (duration || 1)) * 100}% - 7px)` }}
+                                     />
+                                     
+                                     {/* Interaction Layer (Invisible Input) */}
                                      <input 
-                                        type="range" min="0" max={duration || 100} value={progress}
+                                        type="range" 
+                                        min="0" 
+                                        max={duration || 100} 
+                                        step="any"
+                                        value={progress}
                                         onChange={handleSeek}
                                         onMouseDown={() => setIsDragging(true)}
                                         onTouchStart={() => setIsDragging(true)}
                                         onMouseUp={() => setIsDragging(false)}
                                         onTouchEnd={() => setIsDragging(false)}
-                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                     />
                                 </div>
-                                <div className="flex justify-between text-[11px] text-white/50 font-mono font-medium">
+                                <div className="flex justify-between text-[11px] text-white/50 font-mono font-medium -mt-1">
                                     <span>{formatTime(progress)}</span>
                                     <span>{formatTime(duration)}</span>
                                 </div>
@@ -399,27 +415,13 @@ export const Player: React.FC = () => {
 
                             {/* Bottom Row */}
                             <div className="flex items-center justify-between px-4">
-                                <button onClick={() => showToast("Lyrics coming soon")} className="text-white/50 shrink-0 hover:text-white transition-colors p-2">
+                                <button className="text-white/50 shrink-0 hover:text-white transition-colors p-2">
                                     <Mic2 size={22} />
                                 </button>
                                 <button className="text-white/50 shrink-0 hover:text-white transition-colors p-2"><ListMusic size={22} /></button>
                             </div>
                         </div>
                     </div>
-
-                    {/* Toast Notification */}
-                    <AnimatePresence>
-                        {toastMessage && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 20 }}
-                                className="absolute bottom-32 left-1/2 -translate-x-1/2 z-[300] bg-white text-black px-6 py-3 rounded-full font-bold shadow-xl text-sm whitespace-nowrap"
-                            >
-                                {toastMessage}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
                     {/* More Menu (Enhanced) */}
                     <AnimatePresence>
@@ -440,7 +442,7 @@ export const Player: React.FC = () => {
                                             setIsMoreMenuOpen(false);
                                         }
                                     }}
-                                    className="bg-[#242424] rounded-t-2xl flex flex-col max-h-[80vh] overflow-y-auto pb-6"
+                                    className="bg-[#242424] rounded-t-2xl flex flex-col max-h-[85vh] overflow-y-auto pb-6"
                                     onClick={e => e.stopPropagation()}
                                 >
                                     {/* Drag Handle */}
@@ -457,35 +459,68 @@ export const Player: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* New Download Card UI */}
+                                    {/* Inline Accordion Download UI */}
                                     <div className="px-6 py-2">
-                                        <button 
-                                            onClick={() => { setDownloadSong(currentSong); setIsMoreMenuOpen(false); }} 
-                                            className={`w-full flex items-center justify-between p-4 rounded-xl font-bold transition-all active:scale-95 border ${
-                                                isDownloaded 
-                                                ? 'bg-[#1DB954] border-[#1DB954] text-black' 
-                                                : 'bg-[#333] border-white/5 text-white hover:bg-[#404040]'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                 <div className={`p-2 rounded-full ${isDownloaded ? 'bg-black/10' : 'bg-white/10'}`}>
-                                                    <Download size={20} />
-                                                 </div>
-                                                 <div className="flex flex-col items-start">
-                                                     <span className="text-sm">{isDownloaded ? 'Downloaded' : 'Download'}</span>
-                                                     <span className={`text-[10px] font-medium ${isDownloaded ? 'text-black/70' : 'text-white/50'}`}>
-                                                        {isDownloaded ? 'Available offline' : 'High Quality (320kbps)'}
-                                                     </span>
-                                                 </div>
-                                            </div>
-                                            {isDownloaded && <CheckCircle2 size={20} />}
-                                        </button>
+                                        <div className={`rounded-xl transition-all border overflow-hidden ${isDownloadExpanded ? 'bg-[#2A2A2A] border-white/10' : 'bg-[#333] border-white/5'}`}>
+                                            <button 
+                                                onClick={() => { 
+                                                    if(isDownloaded) return; // Already downloaded
+                                                    setIsDownloadExpanded(!isDownloadExpanded);
+                                                }} 
+                                                className={`w-full flex items-center justify-between p-4 ${isDownloaded ? 'cursor-default' : 'cursor-pointer'}`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                      <div className={`p-2 rounded-full ${isDownloaded ? 'bg-[#1DB954]/20 text-[#1DB954]' : 'bg-white/10 text-white'}`}>
+                                                      <Download size={20} />
+                                                      </div>
+                                                      <div className="flex flex-col items-start">
+                                                          <span className={`text-sm font-bold ${isDownloaded ? 'text-[#1DB954]' : 'text-white'}`}>
+                                                              {isDownloaded ? 'Downloaded' : 'Download'}
+                                                          </span>
+                                                          <span className="text-[10px] text-white/50 font-medium">
+                                                          {isDownloaded ? 'Available offline' : (isDownloadExpanded ? 'Select Quality' : 'Tap to choose quality')}
+                                                          </span>
+                                                      </div>
+                                                </div>
+                                                {isDownloaded ? <CheckCircle2 size={20} className="text-[#1DB954]" /> : (
+                                                    <ChevronDown size={20} className={`text-white/50 transition-transform ${isDownloadExpanded ? 'rotate-180' : ''}`} />
+                                                )}
+                                            </button>
+
+                                            {/* Expanded Options */}
+                                            <AnimatePresence>
+                                                {isDownloadExpanded && !isDownloaded && (
+                                                    <motion.div 
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: 'auto', opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        className="border-t border-white/5 bg-[#252525]"
+                                                    >
+                                                        {currentSong.downloadUrl.slice().sort((a,b) => parseInt(b.quality.replace(/\D/g, '')) - parseInt(a.quality.replace(/\D/g, ''))).map((opt) => (
+                                                            <button
+                                                                key={opt.quality}
+                                                                onClick={() => handleDownloadSelect(opt.url, opt.quality)}
+                                                                className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors group border-b border-white/5 last:border-0"
+                                                            >
+                                                                <div className="flex flex-col items-start">
+                                                                    <span className="text-white font-medium text-sm">{opt.quality}</span>
+                                                                    <span className="text-[10px] text-white/40 group-hover:text-white/60">
+                                                                        {opt.quality.includes('320') ? 'Best Quality (~8MB)' : opt.quality.includes('160') ? 'Good Balance (~4MB)' : 'Data Saver'}
+                                                                    </span>
+                                                                </div>
+                                                                <Download size={16} className="text-white/20 group-hover:text-white" />
+                                                            </button>
+                                                        ))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
                                     </div>
 
                                     {/* Menu Actions List */}
                                     <div className="flex flex-col py-2">
                                         
-                                        <button onClick={() => { toggleLike(currentSong); setIsMoreMenuOpen(false); showToast(isLiked ? "Removed from Liked Songs" : "Added to Liked Songs"); }} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                        <button onClick={() => { toggleLike(currentSong); setIsMoreMenuOpen(false); }} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
                                             <Heart size={24} className={isLiked ? "text-[#1DB954] fill-[#1DB954]" : "text-white/80"} />
                                             <span className="text-white font-medium">{isLiked ? 'Liked' : 'Like'}</span>
                                         </button>
@@ -520,7 +555,7 @@ export const Player: React.FC = () => {
                                             <span className="text-white font-medium">Go to Song Radio</span>
                                         </button>
 
-                                        <button onClick={() => showToast("Credits: Written by " + primaryArtistName)} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
+                                        <button className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 active:bg-black/20 transition-colors">
                                             <Info size={24} className="text-white/80" />
                                             <span className="text-white font-medium">Show credits</span>
                                         </button>
@@ -603,10 +638,6 @@ export const Player: React.FC = () => {
                 </motion.div>
             )}
         </AnimatePresence>
-
-        {downloadSong && (
-            <DownloadQualityModal song={downloadSong} onClose={() => setDownloadSong(null)} />
-        )}
     </>
   );
 };

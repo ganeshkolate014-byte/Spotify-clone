@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, getImageUrl } from '../services/api';
 import { Song, Album } from '../types';
 import { usePlayerStore } from '../store/playerStore';
-import { Bell, History, Settings, Play, UserCircle, WifiOff } from 'lucide-react';
+import { Bell, History, Settings, Play, UserCircle, WifiOff, Rocket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SongCard } from '../components/SongCard';
 import { motion } from 'framer-motion';
@@ -111,22 +111,26 @@ export const Home: React.FC = () => {
     return () => main?.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const ShortcutCard: React.FC<{ title: string, image?: string, isLikedSongs?: boolean, onClick?: () => void }> = ({ title, image, isLikedSongs = false, onClick }) => (
+  const ShortcutCard: React.FC<{ title: string, image?: string, specialType?: 'liked' | 'whyus', onClick?: () => void }> = ({ title, image, specialType, onClick }) => (
     <motion.div 
         whileHover={{ scale: 1.02, backgroundColor: '#3E3E3E' }}
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
         className="glass-card flex items-center gap-0 cursor-pointer h-[48px] overflow-hidden group rounded-[4px] bg-[#2A2A2A] transition-colors"
     >
-        {isLikedSongs ? (
+        {specialType === 'liked' ? (
             <div className="h-full w-[48px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 opacity-100">
                 <svg role="img" height="18" width="18" aria-hidden="true" viewBox="0 0 24 24" fill="white"><path d="M15.724 4.22A4.313 4.313 0 0 0 12.192.814a4.269 4.269 0 0 0-3.622 1.13.837.837 0 0 1-1.14 0 4.272 4.272 0 0 0-6.21 5.855l5.916 7.05a1.128 1.128 0 0 0 1.727 0l5.916-7.05a4.228 4.228 0 0 0 .945-3.577z"></path></svg>
+            </div>
+        ) : specialType === 'whyus' ? (
+            <div className="h-full w-[48px] bg-gradient-to-br from-[#1DB954] to-emerald-700 flex items-center justify-center shrink-0 opacity-100">
+                <Rocket size={20} className="text-white" />
             </div>
         ) : (
             <img src={image} className="h-[48px] w-[48px] object-cover shrink-0 shadow-none" alt=""/>
         )}
         <div className="flex flex-1 items-center justify-between pr-2 pl-2 overflow-hidden">
-             <span className="font-bold text-[11px] md:text-[13px] leading-tight line-clamp-2 text-white pr-1">{title}</span>
+             <span className={`font-bold text-[11px] md:text-[13px] leading-tight line-clamp-2 pr-1 ${specialType === 'whyus' ? 'text-[#1DB954]' : 'text-white'}`}>{title}</span>
         </div>
     </motion.div>
   );
@@ -187,11 +191,15 @@ export const Home: React.FC = () => {
       <motion.div variants={itemVariants} className="px-4 mt-2">
           <h2 className="text-2xl font-bold text-white mb-4">{isOfflineMode ? "Your Downloads" : "Jump back in"}</h2>
           <div className="grid grid-cols-2 gap-2">
-            <ShortcutCard title="Liked Songs" isLikedSongs onClick={() => navigate('/library')} />
+            <ShortcutCard title="Liked Songs" specialType="liked" onClick={() => navigate('/library')} />
+            
+            {/* NEW WHY US CARD */}
+            <ShortcutCard title="Why Vibestream?" specialType="whyus" onClick={() => navigate('/why-us')} />
+            
             {!isOfflineMode && isLoading ? (
-                Array(5).fill(0).map((_, i) => <SkeletonShortcut key={i} />)
+                Array(4).fill(0).map((_, i) => <SkeletonShortcut key={i} />)
             ) : !isOfflineMode ? (
-                recent.slice(0, 5).map((item, idx) => (
+                recent.slice(0, 4).map((item, idx) => (
                     <ShortcutCard 
                         key={item.id + idx} 
                         title={item.name} 
