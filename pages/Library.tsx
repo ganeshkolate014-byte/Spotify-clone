@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle, Sparkles } from 'lucide-react';
+import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle, Sparkles, CheckCircle2, WifiOff } from 'lucide-react';
 import { getImageUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
 
 export const Library: React.FC = () => {
-  const { likedSongs, userPlaylists, currentUser } = usePlayerStore();
+  const { likedSongs, userPlaylists, currentUser, isOfflineMode, downloadedSongIds } = usePlayerStore();
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<'All' | 'Playlists' | 'Artists'>('All');
+  const [filter, setFilter] = useState<'All' | 'Playlists' | 'Artists' | 'Downloaded'>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Filter Logic
+  // For playlists, we assume user created playlists *might* have some downloaded songs.
+  // In a real app, we'd check if the playlist is fully downloaded, but for this demo,
+  // we just show the playlists. The song check happens inside the playlist view.
+  const filteredPlaylists = userPlaylists.filter(() => {
+     if (isOfflineMode || filter === 'Downloaded') {
+         // Only show playlists that are owned by user or specifically marked (simplification)
+         // Or just show all playlists and let user find downloaded songs inside
+         return true; 
+     }
+     return true;
+  });
+
+  const downloadedLikedSongsCount = likedSongs.filter(s => downloadedSongIds.includes(s.id)).length;
+  
   const FilterChip = ({ label }: { label: string }) => (
       <button 
         onClick={() => setFilter(label as any)}
@@ -47,17 +62,29 @@ export const Library: React.FC = () => {
               <h1 className="text-2xl font-bold text-white">Your Library</h1>
           </div>
           <div className="flex items-center gap-4 text-white">
-              <button onClick={() => navigate('/premium')} className="hover:text-white/70 transition-colors"><Sparkles size={24} /></button>
+              {!isOfflineMode && <button onClick={() => navigate('/premium')} className="hover:text-white/70 transition-colors"><Sparkles size={24} /></button>}
               <button className="hover:text-white/70 transition-colors"><Search size={24} /></button>
               <button onClick={() => setIsModalOpen(true)} className="hover:text-white/70 transition-colors"><Plus size={26} /></button>
           </div>
       </div>
 
+      {/* Offline Banner in Library */}
+      {isOfflineMode && (
+         <div className="mb-4 bg-[#2A2A2A] rounded-lg p-3 flex items-center gap-3 animate-in fade-in">
+             <div className="bg-[#333] p-2 rounded-full"><WifiOff size={16} /></div>
+             <div className="flex flex-col">
+                 <span className="text-sm font-bold text-white">You're offline</span>
+                 <span className="text-xs text-[#B3B3B3]">Showing only downloaded music.</span>
+             </div>
+         </div>
+      )}
+
       {/* Filters */}
       <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
-          <FilterChip label="All" />
-          <FilterChip label="Playlists" />
-          <FilterChip label="Artists" />
+          {!isOfflineMode && <FilterChip label="All" />}
+          {!isOfflineMode && <FilterChip label="Playlists" />}
+          {!isOfflineMode && <FilterChip label="Artists" />}
+          <FilterChip label="Downloaded" />
       </div>
 
       {/* Sort Row */}
@@ -80,24 +107,27 @@ export const Library: React.FC = () => {
       <div className="flex flex-col gap-2">
           
           {/* Liked Songs Pin */}
-          <div 
-            onClick={() => navigate('/liked')}
-            className="flex items-center gap-3 p-2 -mx-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer active:scale-[0.99] transition-all group"
-          >
-              <div className="w-[50px] h-[50px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 rounded-[4px]">
-                 <Heart size={24} fill="white" className="text-white" />
-              </div>
-              <div className="flex flex-col flex-1 min-w-0">
-                  <span className="text-white font-medium text-[15px] truncate group-hover:text-white">Liked Songs</span>
-                  <div className="flex items-center gap-1.5 text-[#B3B3B3] text-sm">
-                       <Pin size={12} fill="#1DB954" className="text-[#1DB954] rotate-45" />
-                       <span>Playlist • {likedSongs.length} songs</span>
+          {(!isOfflineMode || downloadedLikedSongsCount > 0) && (
+              <div 
+                onClick={() => navigate('/liked')}
+                className="flex items-center gap-3 p-2 -mx-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer active:scale-[0.99] transition-all group"
+              >
+                  <div className="w-[50px] h-[50px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 rounded-[4px]">
+                     <Heart size={24} fill="white" className="text-white" />
+                  </div>
+                  <div className="flex flex-col flex-1 min-w-0">
+                      <span className="text-white font-medium text-[15px] truncate group-hover:text-white">Liked Songs</span>
+                      <div className="flex items-center gap-1.5 text-[#B3B3B3] text-sm">
+                           <Pin size={12} fill="#1DB954" className="text-[#1DB954] rotate-45" />
+                           <span>Playlist • {isOfflineMode ? downloadedLikedSongsCount : likedSongs.length} songs</span>
+                           {isOfflineMode && <CheckCircle2 size={12} className="text-[#1DB954]" />}
+                      </div>
                   </div>
               </div>
-          </div>
+          )}
 
           {/* User Playlists */}
-          {userPlaylists.map(playlist => (
+          {filteredPlaylists.map(playlist => (
              <div 
                 key={playlist.id}
                 onClick={() => navigate(`/playlist/${playlist.id}`)}
@@ -114,10 +144,21 @@ export const Library: React.FC = () => {
                 </div>
                 <div className="flex flex-col flex-1 min-w-0">
                     <span className="text-white font-medium text-[15px] truncate">{playlist.title}</span>
-                    <span className="text-[#B3B3B3] text-sm truncate">Playlist • {playlist.subtitle}</span>
+                    <div className="flex items-center gap-1 text-[#B3B3B3] text-sm truncate">
+                        <span>Playlist • {playlist.subtitle}</span>
+                        {isOfflineMode && <CheckCircle2 size={12} className="text-[#1DB954]" />}
+                    </div>
                 </div>
              </div>
           ))}
+
+          {isOfflineMode && filteredPlaylists.length === 0 && downloadedLikedSongsCount === 0 && (
+              <div className="text-center py-10 text-[#777]">
+                  <WifiOff size={40} className="mx-auto mb-4 opacity-50" />
+                  <p>No downloaded content found.</p>
+                  <p className="text-xs mt-2">Go online to download music.</p>
+              </div>
+          )}
 
       </div>
 

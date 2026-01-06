@@ -1,13 +1,26 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { ArrowLeft, Play, Pause, Clock3, Heart, Download, ListFilter, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getImageUrl } from '../services/api';
-import { motion } from 'framer-motion';
+import { DownloadQualityModal } from '../components/DownloadQualityModal';
+import { Song } from '../types';
 
 export const LikedSongs: React.FC = () => {
   const { likedSongs, playSong, currentSong, isPlaying, toggleLike } = usePlayerStore();
   const navigate = useNavigate();
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [downloadSong, setDownloadSong] = useState<Song | null>(null);
+
+  // Scroll listener attached to MAIN container
+  useEffect(() => {
+    const main = document.querySelector('main');
+    const handleScroll = () => {
+        if (main) setIsScrolled(main.scrollTop > 100);
+    };
+    main?.addEventListener('scroll', handleScroll);
+    return () => main?.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handlePlayAll = () => {
     if (likedSongs.length > 0) {
@@ -15,52 +28,37 @@ export const LikedSongs: React.FC = () => {
     }
   };
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05
-      }
-    }
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 }
+  const handleDownloadClick = (e: React.MouseEvent, song: Song) => {
+      e.stopPropagation();
+      setDownloadSong(song);
   };
 
   return (
-    <div className="min-h-full pb-32 relative isolate">
+    <div className="min-h-full pb-32 relative isolate bg-[#121212]">
       {/* Deep Atmosphere Background */}
-      <div className="fixed inset-0 bg-[#121212] -z-20"></div>
-      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-[#5038a0] via-[#2d2060] to-[#121212] -z-10 opacity-80" />
+      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-[#5038a0] via-[#2d2060] to-[#121212] -z-10 opacity-100 transition-all duration-700" />
 
       {/* Sticky Header */}
-      <div className="sticky top-0 z-30 px-6 py-4 flex items-center gap-4 bg-[#121212]/0 backdrop-blur-md transition-colors duration-300">
+      <div className={`sticky top-0 z-50 h-[64px] px-6 flex items-center gap-4 transition-colors duration-200 ${isScrolled ? 'bg-[#121212] border-b border-[#282828]' : 'bg-transparent border-b border-transparent'}`}>
           <button 
             onClick={() => navigate(-1)} 
-            className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 flex items-center justify-center text-white transition-colors"
+            className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-colors"
           >
              <ArrowLeft size={20} />
           </button>
-          <span className="font-bold text-lg text-white opacity-0 md:opacity-100 transition-opacity">Liked Songs</span>
+          <span className={`font-bold text-lg text-white transition-opacity duration-300 ${isScrolled ? 'opacity-100' : 'opacity-0'}`}>Liked Songs</span>
       </div>
 
       <div className="px-6 md:px-10">
         {/* Hero Section */}
         <div className="flex flex-col md:flex-row items-end gap-6 mb-8 pt-2">
-            <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="w-[160px] h-[160px] md:w-[240px] md:h-[240px] bg-gradient-to-br from-[#450af5] to-[#8e8ee5] flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-lg shrink-0 group relative overflow-hidden"
+            <div 
+                className="w-[160px] h-[160px] md:w-[240px] md:h-[240px] bg-gradient-to-br from-[#450af5] to-[#8e8ee5] flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-lg shrink-0 group relative overflow-hidden animate-in fade-in zoom-in duration-500"
             >
                 <Heart size={80} fill="white" className="text-white drop-shadow-xl group-hover:scale-110 transition-transform duration-500" />
-                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            </motion.div>
+            </div>
             
-            <div className="flex flex-col gap-1 md:gap-3 mb-2 flex-1">
+            <div className="flex flex-col gap-1 md:gap-3 mb-2 flex-1 animate-in slide-in-from-bottom-4 duration-500">
                 <span className="text-xs md:text-sm font-bold uppercase tracking-wider text-white hidden md:block">Playlist</span>
                 <h1 className="text-4xl md:text-7xl lg:text-8xl font-black text-white tracking-tighter leading-none drop-shadow-lg">Liked Songs</h1>
                 <div className="flex items-center flex-wrap gap-2 text-sm text-white/90 font-medium mt-2">
@@ -86,9 +84,6 @@ export const LikedSongs: React.FC = () => {
                         <Play size={28} fill="black" className="text-black ml-1 group-hover:scale-110 transition-transform" />
                     )}
                  </button>
-                 <button className="text-white/60 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5">
-                    <Download size={24} />
-                 </button>
              </div>
              <div className="flex items-center gap-4 text-white/60">
                  <button className="hover:text-white transition-colors p-2"><Search size={22} /></button>
@@ -96,21 +91,15 @@ export const LikedSongs: React.FC = () => {
              </div>
         </div>
 
-        {/* List Header (Desktop) */}
-        <div className="grid grid-cols-[16px_1fr_1fr_auto] gap-4 px-4 py-3 border-b border-white/10 text-[#B3B3B3] text-sm font-medium sticky top-[72px] bg-[#121212] z-20 hidden md:grid mb-2">
-            <span className="text-center">#</span>
+        {/* List Header (Desktop) - Sticky below main nav */}
+        <div className="grid grid-cols-[1fr_1fr_auto] gap-4 px-4 py-3 border-b border-white/10 text-[#B3B3B3] text-sm font-medium sticky top-[64px] bg-[#121212] z-40 hidden md:grid mb-2">
             <span>Title</span>
             <span>Album</span>
             <div className="flex justify-end pr-2"><Clock3 size={16} /></div>
         </div>
 
         {/* Songs List */}
-        <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="flex flex-col"
-        >
+        <div className="flex flex-col pb-10">
             {likedSongs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center text-[#B3B3B3]">
                     <div className="w-20 h-20 bg-[#2A2A2A] rounded-full flex items-center justify-center mb-6">
@@ -126,23 +115,22 @@ export const LikedSongs: React.FC = () => {
                 likedSongs.map((song, index) => {
                     const isCurrent = currentSong?.id === song.id;
                     return (
-                        <motion.div
-                            variants={itemVariants}
+                        <div
                             key={song.id}
                             onClick={() => playSong(song, likedSongs)}
-                            className={`group grid grid-cols-[auto_1fr_auto] md:grid-cols-[16px_1fr_1fr_auto] gap-4 px-3 py-2.5 rounded-lg items-center cursor-pointer transition-colors ${isCurrent ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                            className={`group grid grid-cols-[1fr_auto] md:grid-cols-[1fr_1fr_auto] gap-4 px-3 py-2.5 rounded-lg items-center cursor-pointer transition-colors ${isCurrent ? 'bg-white/10' : 'hover:bg-white/5'} animate-in fade-in slide-in-from-bottom-2`}
+                            style={{ animationDelay: `${index * 30}ms` }}
                         >
-                            {/* Index / Play Button */}
-                            <div className="w-4 md:w-full flex items-center justify-center text-[#B3B3B3] text-sm font-mono relative">
-                                <span className={`group-hover:opacity-0 transition-opacity duration-0 ${isCurrent ? 'text-[#1DB954]' : ''}`}>{index + 1}</span>
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-0 text-white">
-                                    {isCurrent && isPlaying ? <Pause size={14} fill="white" /> : <Play size={14} fill="white" />}
-                                </div>
-                            </div>
-
                             {/* Title & Artist */}
                             <div className="flex items-center gap-4 overflow-hidden">
-                                <img src={getImageUrl(song.image)} alt="" className="w-10 h-10 rounded shadow-sm object-cover shrink-0" />
+                                <div className="relative shrink-0 w-10 h-10">
+                                    <img src={getImageUrl(song.image)} alt="" className="w-full h-full rounded shadow-sm object-cover" />
+                                    {isCurrent && (
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-[4px]">
+                                            <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2ef4.gif" className="h-3 w-3" alt="playing"/>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex flex-col overflow-hidden">
                                     <span className={`truncate font-medium text-[15px] ${isCurrent ? 'text-[#1DB954]' : 'text-white'}`}>{song.name}</span>
                                     <div className="flex items-center gap-1 group-hover:text-white text-[#B3B3B3] transition-colors text-sm truncate">
@@ -159,8 +147,15 @@ export const LikedSongs: React.FC = () => {
                                 {song.album?.name || "Single"}
                             </span>
 
-                            {/* Duration / Heart */}
-                            <div className="flex items-center justify-end gap-6 min-w-[50px]">
+                            {/* Duration / Download / Heart */}
+                            <div className="flex items-center justify-end gap-4 min-w-[80px]">
+                                <button 
+                                    onClick={(e) => handleDownloadClick(e, song)}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[#B3B3B3] hover:text-white"
+                                    title="Download"
+                                >
+                                    <Download size={18} />
+                                </button>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); toggleLike(song); }}
                                     className="opacity-0 group-hover:opacity-100 transition-opacity text-[#1DB954] focus:opacity-100"
@@ -171,11 +166,19 @@ export const LikedSongs: React.FC = () => {
                                     {Math.floor(parseInt(song.duration) / 60)}:{(parseInt(song.duration) % 60).toString().padStart(2, '0')}
                                 </span>
                             </div>
-                        </motion.div>
+                        </div>
                     );
                 })
             )}
-        </motion.div>
+        </div>
+        
+        {/* Download Modal */}
+        {downloadSong && (
+            <DownloadQualityModal 
+                song={downloadSong} 
+                onClose={() => setDownloadSong(null)} 
+            />
+        )}
       </div>
     </div>
   );

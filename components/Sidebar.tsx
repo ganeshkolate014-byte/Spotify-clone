@@ -3,6 +3,7 @@ import { Home, Search, Library, Plus, ArrowRight, Heart, Music, UserCircle, LogO
 import { NavLink, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { getImageUrl } from '../services/api';
+import { motion } from 'framer-motion';
 
 export const Sidebar: React.FC = () => {
   const activeClass = "text-white";
@@ -14,20 +15,28 @@ export const Sidebar: React.FC = () => {
     <aside className="w-[350px] bg-black flex flex-col h-full gap-2 p-2 hidden md:flex">
       {/* Navigation Block */}
       <div className="bg-[#121212] rounded-lg py-2 flex flex-col">
+        <div className="px-6 py-4 pb-2">
+            <img 
+                src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_White.png" 
+                alt="Spotify" 
+                className="h-6 w-auto cursor-pointer" 
+                onClick={() => navigate('/')}
+            />
+        </div>
         <NavLink to="/" className={({ isActive }) => `${baseClass} ${isActive ? activeClass : ''}`}>
           {({ isActive }) => (
-             <>
+             <motion.div whileHover={{ x: 4 }} className="flex items-center gap-5 w-full">
                <Home size={24} strokeWidth={isActive ? 0 : 2} fill={isActive ? "white" : "none"} />
                <span>Home</span>
-             </>
+             </motion.div>
           )}
         </NavLink>
         <NavLink to="/search" className={({ isActive }) => `${baseClass} ${isActive ? activeClass : ''}`}>
           {({ isActive }) => (
-             <>
+             <motion.div whileHover={{ x: 4 }} className="flex items-center gap-5 w-full">
                <Search size={24} strokeWidth={isActive ? 3 : 2} />
                <span>Search</span>
-             </>
+             </motion.div>
           )}
         </NavLink>
       </div>
@@ -65,7 +74,9 @@ export const Sidebar: React.FC = () => {
         {/* Library Items */}
         <div className="flex-1 overflow-y-auto hover:overflow-y-scroll px-2 mt-2">
             {/* Liked Songs */}
-            <div 
+            <motion.div 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/liked')}
                 className="flex items-center gap-3 px-2 py-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer group transition-colors"
             >
@@ -79,12 +90,14 @@ export const Sidebar: React.FC = () => {
                         <span>Auto Playlist</span>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
              {/* User Playlists */}
              {userPlaylists.map((playlist) => (
-                 <div 
+                 <motion.div 
                     key={playlist.id} 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => navigate(`/playlist/${playlist.id}`)}
                     className="flex items-center gap-3 px-2 py-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer group transition-colors"
                 >
@@ -99,7 +112,7 @@ export const Sidebar: React.FC = () => {
                         <span className="text-white font-medium truncate">{playlist.title}</span>
                         <span className="text-sm text-[#B3B3B3] truncate">Playlist • {currentUser ? currentUser.name : 'Guest'}</span>
                     </div>
-                </div>
+                </motion.div>
              ))}
         </div>
         
@@ -109,7 +122,7 @@ export const Sidebar: React.FC = () => {
                  <div 
                     onClick={() => navigate('/profile')}
                     className="flex items-center justify-between group cursor-pointer hover:bg-[#2A2A2A] p-2 rounded-md transition-colors"
-                 >
+                >
                      <div className="flex items-center gap-3">
                          {currentUser.image ? (
                              <img src={currentUser.image} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover" />

@@ -76,24 +76,6 @@ export interface UserPlaylist extends Playlist {
   creator?: string; // email or id
 }
 
-export interface User {
-  email: string;
-  passwordHash?: string; // Optional with Firebase
-  name: string; // Acts as Username
-  image?: string; // Profile picture URL
-  playlists: UserPlaylist[];
-  
-  // Social Fields
-  friends: string[]; // List of friend/contact emails
-  
-  // Real-time Status (Synced to cloud)
-  currentActivity?: {
-    song: Song | null;
-    timestamp: number;
-    status: 'online' | 'offline' | 'listening';
-  };
-}
-
 // --- SOCIAL FEATURES ---
 
 export interface ChatMessage {
@@ -102,6 +84,28 @@ export interface ChatMessage {
   text: string;
   timestamp: number;
   isSystem?: boolean; 
+}
+
+export interface User {
+  email: string;
+  passwordHash?: string; // Optional with Firebase
+  name: string; // Acts as Username
+  image?: string; // Profile picture URL
+  playlists: UserPlaylist[];
+  likedSongs?: Song[];
+  history?: Song[];
+  favoriteArtists?: Artist[];
+  
+  // Social Fields
+  friends: string[]; // List of friend/contact emails
+  chats?: Record<string, ChatMessage[]>;
+  
+  // Real-time Status (Synced to cloud)
+  currentActivity?: {
+    song: Song | null;
+    timestamp: number;
+    status: 'online' | 'offline' | 'listening';
+  };
 }
 
 export interface Friend {

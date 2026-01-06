@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession } from '../types';
+import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession, Artist } from '../types';
 import { authService } from '../services/auth';
+import { downloadSongWithProgress, OfflineStorage } from '../services/api';
 
 interface PlayerState {
   isPlaying: boolean;
@@ -11,10 +12,18 @@ interface PlayerState {
   queue: Song[];
   history: Song[];
   likedSongs: Song[];
+  favoriteArtists: Artist[];
   userPlaylists: UserPlaylist[];
   volume: number;
   isShuffling: boolean;
+  streamingQuality: 'low' | 'normal' | 'high';
   
+  // Offline & Downloads
+  isOfflineMode: boolean;
+  downloadedSongIds: string[];
+  activeDownload: Song | null;
+  downloadProgress: number;
+
   // Auth
   currentUser: User | null;
 
@@ -40,13 +49,19 @@ interface PlayerState {
   setVolume: (val: number) => void;
   addToHistory: (song: Song) => void;
   toggleLike: (song: Song) => void;
+  toggleArtistLike: (artist: Artist) => void;
   createPlaylist: (playlist: UserPlaylist) => void;
   importPlaylist: (playlist: UserPlaylist) => void;
   addSongToPlaylist: (playlistId: string, song: Song) => void;
   removePlaylist: (id: string) => void;
+  setStreamingQuality: (quality: 'low' | 'normal' | 'high') => void;
+  startDownload: (song: Song, url: string, filename: string) => Promise<void>;
+  
+  // Network Actions
+  setOfflineMode: (isOffline: boolean) => void;
   
   // Auth Actions
-  loginUser: (user: User & { likedSongs?: Song[], history?: Song[], chats?: any }) => void;
+  loginUser: (user: User & { likedSongs?: Song[], history?: Song[], favoriteArtists?: Artist[], chats?: any }) => void;
   logoutUser: () => void;
   syncUserToCloud: (type?: 'public' | 'private' | 'both') => void;
   updateUserProfile: (name: string, image?: string) => void;
@@ -72,11 +87,19 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       history: [],
       likedSongs: [],
+      favoriteArtists: [],
       userPlaylists: [],
       volume: 1,
       isShuffling: false,
       currentUser: null,
+      streamingQuality: 'high',
       
+      // Offline State
+      isOfflineMode: !navigator.onLine,
+      downloadedSongIds: [],
+      activeDownload: null,
+      downloadProgress: 0,
+
       // Social Initial State
       friends: [],
       searchResults: [],
@@ -84,11 +107,13 @@ export const usePlayerStore = create<PlayerState>()(
       partySession: null,
       unsubscribers: [],
 
+      setOfflineMode: (isOffline) => set({ isOfflineMode: isOffline }),
+
       playSong: (song, newQueue) => {
         const { addToHistory, currentUser } = get();
         addToHistory(song);
         
-        if (currentUser) {
+        if (currentUser && navigator.onLine) {
             authService.updateUserStatus('listening', song);
         }
         
@@ -97,7 +122,7 @@ export const usePlayerStore = create<PlayerState>()(
           isPlaying: true,
           isBuffering: true, 
           queue: newQueue ? newQueue : state.queue,
-          isFullScreen: false, // Changed: Do not auto-open full player
+          isFullScreen: false, 
         }));
       },
 
@@ -105,8 +130,8 @@ export const usePlayerStore = create<PlayerState>()(
       
       setIsPlaying: (isPlaying) => {
           set({ isPlaying });
-          const { currentUser, currentSong } = get();
-          if (currentUser && !isPlaying) {
+          const { currentUser, currentSong, isOfflineMode } = get();
+          if (currentUser && !isPlaying && !isOfflineMode) {
              authService.updateUserStatus('online', currentSong);
           }
       },
@@ -133,11 +158,12 @@ export const usePlayerStore = create<PlayerState>()(
       addToQueue: (song) => set((state) => ({ queue: [...state.queue, song] })),
       setQueue: (songs) => set({ queue: songs }),
       setVolume: (volume) => set({ volume }),
+      setStreamingQuality: (quality) => set({ streamingQuality: quality }),
 
       addToHistory: (song) => {
           set((state) => {
             const newHistory = [song, ...state.history.filter(s => s.id !== song.id)].slice(0, 20);
-            setTimeout(() => get().syncUserToCloud('private'), 1000);
+            if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
             return { history: newHistory };
           });
       },
@@ -146,21 +172,28 @@ export const usePlayerStore = create<PlayerState>()(
           set((state) => {
             const isLiked = state.likedSongs.some(s => s.id === song.id);
             const newLiked = isLiked ? state.likedSongs.filter(s => s.id !== song.id) : [song, ...state.likedSongs];
-            setTimeout(() => get().syncUserToCloud('private'), 1000);
+            if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
             return { likedSongs: newLiked };
+          });
+      },
+
+      toggleArtistLike: (artist) => {
+          set((state) => {
+              const isLiked = state.favoriteArtists.some(a => a.id === artist.id);
+              const newLiked = isLiked 
+                  ? state.favoriteArtists.filter(a => a.id !== artist.id) 
+                  : [...state.favoriteArtists, artist];
+              return { favoriteArtists: newLiked };
           });
       },
 
       createPlaylist: (playlist) => {
         set((state) => {
            const newPlaylists = [playlist, ...state.userPlaylists];
-           
-           // Also save to global playlists for sharing
-           authService.savePublicPlaylist(playlist);
-           
+           if(navigator.onLine) authService.savePublicPlaylist(playlist);
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             setTimeout(() => get().syncUserToCloud('private'), 1000);
+             if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -169,13 +202,11 @@ export const usePlayerStore = create<PlayerState>()(
 
       importPlaylist: (playlist) => {
         set((state) => {
-           // Avoid duplicates
            if (state.userPlaylists.some(p => p.id === playlist.id)) return {};
-
            const newPlaylists = [playlist, ...state.userPlaylists];
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             setTimeout(() => get().syncUserToCloud('private'), 1000);
+             if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -186,18 +217,16 @@ export const usePlayerStore = create<PlayerState>()(
         set((state) => {
           const newPlaylists = state.userPlaylists.map(p => {
             if (p.id === playlistId) {
-               // Update global copy too if it exists there
                const updated = { ...p, songs: [...p.songs, song] };
                if (p.songs.some(s => s.id === song.id)) return p;
-               
-               authService.savePublicPlaylist(updated);
+               if(navigator.onLine) authService.savePublicPlaylist(updated);
                return updated;
             }
             return p;
           });
           if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             setTimeout(() => get().syncUserToCloud('private'), 1000);
+             if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
@@ -209,11 +238,36 @@ export const usePlayerStore = create<PlayerState>()(
            const newPlaylists = state.userPlaylists.filter(p => p.id !== id);
            if (state.currentUser) {
              const updatedUser = { ...state.currentUser, playlists: newPlaylists };
-             setTimeout(() => get().syncUserToCloud('private'), 1000);
+             if(navigator.onLine) setTimeout(() => get().syncUserToCloud('private'), 1000);
              return { userPlaylists: newPlaylists, currentUser: updatedUser };
            }
            return { userPlaylists: newPlaylists };
         });
+      },
+
+      startDownload: async (song, url, filename) => {
+         set({ activeDownload: song, downloadProgress: 0 });
+         try {
+             await downloadSongWithProgress(song.id, url, filename, (progress) => {
+                 set({ downloadProgress: progress });
+             });
+             
+             // Mark as downloaded in state
+             set(state => {
+                 const newDownloads = state.downloadedSongIds.includes(song.id) 
+                    ? state.downloadedSongIds 
+                    : [...state.downloadedSongIds, song.id];
+                 return { downloadProgress: 100, downloadedSongIds: newDownloads };
+             });
+
+             // Wait a bit before closing progress
+             setTimeout(() => {
+                 set({ activeDownload: null, downloadProgress: 0 });
+             }, 2000);
+         } catch (e) {
+             console.error("Download Error", e);
+             set({ activeDownload: null, downloadProgress: 0 });
+         }
       },
 
       loginUser: (user) => {
@@ -222,39 +276,32 @@ export const usePlayerStore = create<PlayerState>()(
             userPlaylists: user.playlists || [],
             likedSongs: user.likedSongs || [],
             history: user.history || [],
+            favoriteArtists: user.favoriteArtists || []
           });
           get().initRealtimeListeners();
       },
 
       initRealtimeListeners: () => {
          const { unsubscribers, currentUser } = get();
-         // Cleanup old listeners
          unsubscribers.forEach(unsub => unsub());
          
-         if (!currentUser) {
+         if (!currentUser || !navigator.onLine) {
              set({ unsubscribers: [] });
              return;
          }
 
          const newUnsubscribers: Function[] = [];
 
-         // 1. Listen to MY DATA (Chats, Contact List changes)
          const unsubUser = authService.subscribeToUserData((data) => {
              set((state) => {
                  const updatedUser = { ...state.currentUser, ...data } as User;
-                 
                  const existingFriends = state.friends;
                  const serverContactEmails = data.friends || [];
                  const serverChats = data.chats || {};
 
-                 // Reconstruct friends array based on server email list
                  const mergedFriends: Friend[] = serverContactEmails.map((email: string) => {
-                     // Find existing state for this friend to keep status/song
                      const existing = existingFriends.find(f => f.id === email);
-                     
-                     // Get chats from my doc
                      const chatHistory = serverChats[email] || serverChats[email.replace(/\./g, '_dot_')] || [];
-
                      return {
                          id: email,
                          name: existing?.name || email.split('@')[0], 
@@ -275,7 +322,6 @@ export const usePlayerStore = create<PlayerState>()(
          });
          newUnsubscribers.push(unsubUser);
 
-         // 2. Listen to CONTACTS ACTIVITY (Status, Song)
          if (currentUser.friends && currentUser.friends.length > 0) {
              const unsubFriends = authService.subscribeToFriendsActivity(currentUser.friends, (friendsData) => {
                  set((state) => {
@@ -304,7 +350,7 @@ export const usePlayerStore = create<PlayerState>()(
 
       logoutUser: async () => {
         get().unsubscribers.forEach(unsub => unsub());
-        await authService.logout();
+        if(navigator.onLine) await authService.logout();
         set({ 
             currentUser: null, 
             userPlaylists: [],
@@ -312,17 +358,18 @@ export const usePlayerStore = create<PlayerState>()(
             partySession: null,
             likedSongs: [],
             history: [],
+            favoriteArtists: [],
             unsubscribers: []
         });
       },
       
       syncUserToCloud: async (type = 'both') => {
-         const { currentUser, userPlaylists, likedSongs, history } = get();
-         if (!currentUser) return;
+         const { currentUser, userPlaylists, likedSongs, history, favoriteArtists, isOfflineMode } = get();
+         if (!currentUser || isOfflineMode) return;
          const updatedUser = { ...currentUser, playlists: userPlaylists };
          try {
              if (type === 'public' || type === 'both') await authService.syncPublicProfile(updatedUser);
-             if (type === 'private' || type === 'both') await authService.syncPrivateData(updatedUser, { likedSongs, history });
+             if (type === 'private' || type === 'both') await authService.syncPrivateData(updatedUser, { likedSongs, history, favoriteArtists });
          } catch (e) {
              console.error("Sync failed", e);
          }
@@ -343,6 +390,7 @@ export const usePlayerStore = create<PlayerState>()(
 
       searchUsers: async (query) => {
           try {
+              if (!navigator.onLine) return;
               const results = await authService.searchUsers(query);
               const { currentUser } = get();
               const filtered = results.filter(u => u.email !== currentUser?.email);
@@ -352,11 +400,8 @@ export const usePlayerStore = create<PlayerState>()(
 
       addContact: async (email) => {
           const { currentUser } = get();
-          if (!currentUser) return;
-          
+          if (!currentUser || !navigator.onLine) return;
           await authService.addContact(email);
-          
-          // Optimistically update
           set((state) => {
               if (state.friends.some(f => f.id === email)) return {};
               const newFriend: Friend = {
@@ -369,11 +414,9 @@ export const usePlayerStore = create<PlayerState>()(
               };
               return { 
                   friends: [...state.friends, newFriend],
-                  activeChatFriendId: email // Open chat immediately
+                  activeChatFriendId: email 
               };
           });
-          
-          // Re-init listeners to subscribe to new friend's status
           setTimeout(() => {
               get().initRealtimeListeners();
           }, 500);
@@ -405,8 +448,10 @@ export const usePlayerStore = create<PlayerState>()(
               });
               return { friends: updatedFriends };
           });
-
-          await authService.sendChatMessage(currentUser.email, friendId, newMessage);
+          
+          if(navigator.onLine) {
+             await authService.sendChatMessage(currentUser.email, friendId, newMessage);
+          }
       },
 
       startParty: () => set((state) => {
@@ -429,8 +474,11 @@ export const usePlayerStore = create<PlayerState>()(
         history: state.history, 
         volume: state.volume,
         likedSongs: state.likedSongs,
+        favoriteArtists: state.favoriteArtists,
         userPlaylists: state.userPlaylists,
         currentUser: state.currentUser,
+        streamingQuality: state.streamingQuality,
+        downloadedSongIds: state.downloadedSongIds, // Persist download list
       }), 
     }
   )

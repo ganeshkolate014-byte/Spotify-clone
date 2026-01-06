@@ -1,3 +1,4 @@
+
 import { User, ChatMessage, UserPlaylist } from '../types';
 import { auth, db } from './firebase';
 import { 
@@ -36,24 +37,19 @@ export const authService = {
         image: '',
         friends: [],
         playlists: [],
+        likedSongs: [],
+        favoriteArtists: [],
+        history: [],
+        chats: {}
       };
 
       await setDoc(doc(db, "users", uid), cleanData({
         ...newUser,
-        likedSongs: [],
-        history: [],
-        chats: {},
         settings: { volume: 1 },
         currentActivity: { status: 'online', timestamp: Date.now() }
       }));
 
-      return {
-        ...newUser,
-        // @ts-ignore 
-        likedSongs: [],
-        history: [],
-        chats: {}
-      };
+      return newUser;
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
@@ -64,7 +60,7 @@ export const authService = {
   },
 
   // 2. LOGIN
-  login: async (email: string, password: string): Promise<User & { chats?: any, likedSongs?: any[], history?: any[] }> => {
+  login: async (email: string, password: string): Promise<User> => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
@@ -92,6 +88,7 @@ export const authService = {
         playlists: userData.playlists || [],
         likedSongs: userData.likedSongs || [],
         history: userData.history || [],
+        favoriteArtists: userData.favoriteArtists || [],
         chats: userData.chats || {},
         currentActivity: userData.currentActivity
       };
@@ -291,7 +288,8 @@ export const authService = {
      await updateDoc(userRef, cleanData({
          playlists: user.playlists, 
          likedSongs: additionalData.likedSongs,
-         history: additionalData.history
+         history: additionalData.history,
+         favoriteArtists: additionalData.favoriteArtists
      }));
   },
 

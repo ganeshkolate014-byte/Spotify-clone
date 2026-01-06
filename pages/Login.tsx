@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/auth';
 import { usePlayerStore } from '../store/playerStore';
-import { Music, ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -33,11 +33,13 @@ export const Login: React.FC = () => {
       
       <div className="w-full max-w-sm flex flex-col gap-8">
         {/* Header */}
-        <div className="flex flex-col items-center gap-2">
-           <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-2">
-               <Music size={24} className="text-black" />
-           </div>
-           <h1 className="text-3xl font-bold">Log in to VibeStream</h1>
+        <div className="flex flex-col items-center gap-6 mb-2">
+           <img 
+              src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_White.png" 
+              alt="Spotify" 
+              className="h-10 w-auto" 
+           />
+           <h1 className="text-3xl font-bold tracking-tighter">Log in to Spotify</h1>
         </div>
 
         {/* Form */}
@@ -76,7 +78,7 @@ export const Login: React.FC = () => {
            <button 
               type="submit" 
               disabled={loading}
-              className="bg-[#1DB954] text-black font-bold py-3 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex items-center justify-center"
+              className="bg-[#1DB954] text-black font-bold py-3 rounded-full hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex items-center justify-center uppercase tracking-widest text-sm"
            >
               {loading ? <Loader2 size={20} className="animate-spin" /> : 'Log In'}
            </button>
@@ -85,11 +87,11 @@ export const Login: React.FC = () => {
         <div className="h-[1px] bg-[#292929] w-full"></div>
 
         <div className="text-center text-[#B3B3B3]">
-           Don't have an account? <Link to="/signup" className="text-white hover:underline font-bold">Sign up for VibeStream</Link>
+           Don't have an account? <Link to="/signup" className="text-white hover:underline font-bold">Sign up for Spotify</Link>
         </div>
         
         <button onClick={() => navigate('/')} className="text-sm text-[#B3B3B3] hover:text-white flex items-center justify-center gap-1">
-             <ArrowLeft size={14} /> Back to App
+             <ArrowLeft size={14} /> Back to Web Player
         </button>
       </div>
     </div>

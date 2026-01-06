@@ -1,20 +1,83 @@
-import React, { useState, useEffect } from 'react';
-import { Search as SearchIcon, ArrowLeft, X, PlusCircle, CheckCircle2, MoreVertical, TrendingUp, Music } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search as SearchIcon, ArrowLeft, X, Loader2, Play, CheckCircle2, PlusCircle, ArrowUpLeft, MoreVertical } from 'lucide-react';
 import { api, getImageUrl } from '../services/api';
 import { Song, Album, Artist } from '../types';
 import { usePlayerStore } from '../store/playerStore';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+
+const BROWSE_CATEGORIES = [
+  { title: "Podcasts", color: "bg-[#006450]" },
+  { title: "Live Events", color: "bg-[#8400E7]" },
+  { title: "Made For You", color: "bg-[#1E3264]" },
+  { title: "New Releases", color: "bg-[#E8115B]" },
+  { title: "Hindi", color: "bg-[#E13300]" },
+  { title: "Punjabi", color: "bg-[#B02897]" },
+  { title: "Tamil", color: "bg-[#503750]" },
+  { title: "Charts", color: "bg-[#8D67AB]" },
+  { title: "Pop", color: "bg-[#148A08]" },
+  { title: "Indie", color: "bg-[#E91429]" },
+  { title: "Trending", color: "bg-[#B02897]" },
+  { title: "Love", color: "bg-[#FF0090]" },
+  { title: "Discover", color: "bg-[#8D67AB]" },
+  { title: "Radio", color: "bg-[#7358FF]" },
+  { title: "Mood", color: "bg-[#E1118C]" },
+  { title: "Party", color: "bg-[#537AA1]" },
+  { title: "Devotional", color: "bg-[#148A08]" },
+  { title: "Decades", color: "bg-[#BA5D07]" },
+  { title: "Hip-Hop", color: "bg-[#BC5900]" },
+  { title: "Dance / Electronic", color: "bg-[#D84000]" },
+  { title: "Student", color: "bg-[#AF2896]" },
+  { title: "Chill", color: "bg-[#D84000]" },
+  { title: "Gaming", color: "bg-[#E8115B]" },
+  { title: "K-Pop", color: "bg-[#148A08]" },
+];
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, scale: 0.9 },
+  visible: { opacity: 1, scale: 1 }
+};
 
 export const Search: React.FC = () => {
   const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [results, setResults] = useState<{ songs: Song[], albums: Album[], artists: Artist[] }>({ songs: [], albums: [], artists: [] });
+  const [isLoading, setIsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
+  
   const { playSong, likedSongs, toggleLike } = usePlayerStore();
   const navigate = useNavigate();
 
+  // AbortController to handle race conditions
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
+    // Cancel any ongoing fetch if query changes
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+
+    if (!query.trim()) {
+        setResults({ songs: [], albums: [], artists: [] });
+        setSuggestions([]);
+        setIsLoading(false);
+        return;
+    }
+
+    setIsLoading(true);
+
     const timer = setTimeout(async () => {
-      if (query.trim()) {
+        abortControllerRef.current = new AbortController();
         try {
            const [songs, albums, artists] = await Promise.all([
               api.searchSongs(query),
@@ -22,161 +85,198 @@ export const Search: React.FC = () => {
               api.searchArtists(query)
            ]);
 
-           setResults({ songs, albums, artists });
+           // Only update if not aborted
+           if (!abortControllerRef.current?.signal.aborted) {
+               setResults({ songs, albums, artists });
+               
+               // Generate Related Keywords from results
+               const rawTitles = songs.map(s => s.name.toLowerCase());
+               const artistNames = artists.slice(0, 2).map(a => a.name.toLowerCase());
+               
+               const derivedSuggestions = Array.from(new Set([
+                   query.toLowerCase(), 
+                   ...rawTitles.filter(t => t.includes(query.toLowerCase()) && t !== query.toLowerCase()),
+                   ...artistNames,
+                   ...rawTitles
+               ])).slice(0, 4); 
 
-           // Generate real suggestions from data
-           const newSuggestions = new Set<string>();
-           
-           // Priority 1: Exact matches in songs
-           songs.slice(0, 2).forEach(s => newSuggestions.add(s.name));
-           
-           // Priority 2: Artists
-           artists.slice(0, 2).forEach(a => newSuggestions.add(a.name));
-           
-           // Priority 3: Genre if available
-           songs.forEach(s => {
-               if(s.genre && !s.genre.includes('Unknown')) newSuggestions.add(s.genre);
-           });
-
-           // Priority 4: Contextual (Song by Artist)
-           if (songs.length > 0) {
-              const artistName = songs[0].artists?.primary?.[0]?.name;
-              if (artistName) newSuggestions.add(`${songs[0].name} ${artistName}`);
+               setSuggestions(derivedSuggestions);
            }
-
-           setSuggestions(Array.from(newSuggestions).slice(0, 5));
-
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            if (e.name !== 'AbortError') {
+                console.error(e);
+            }
+        } finally {
+            if (!abortControllerRef.current?.signal.aborted) {
+                setIsLoading(false);
+            }
         }
-      } else {
-          setResults({ songs: [], albums: [], artists: [] });
-          setSuggestions([]);
-      }
-    }, 300); 
+    }, 300);
+
     return () => clearTimeout(timer);
   }, [query]);
 
   const clearSearch = () => {
     setQuery('');
-    setSuggestions([]);
     setResults({ songs: [], albums: [], artists: [] });
+    setSuggestions([]);
+    setIsLoading(false);
   };
 
-  const BrowseCard = ({ title, color, image }: { title: string, color: string, image?: string }) => (
-    <div className={`aspect-[1.6/1] ${color} rounded-xl p-4 relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-all duration-300 shadow-lg group`}>
-        <h3 className="text-white font-bold text-lg relative z-10">{title}</h3>
-        <div className="absolute -bottom-2 -right-3 w-20 h-20 bg-black/20 rounded shadow-2xl rotate-[25deg] group-hover:rotate-[30deg] transition-transform duration-300">
-             {image && <img src={image} className="w-full h-full object-cover" alt="" />}
-        </div>
-    </div>
+  const ResultSkeleton = () => (
+      <div className="flex items-center gap-3 px-4 py-2.5 animate-pulse">
+          <div className="w-12 h-12 bg-white/10 rounded-md shrink-0"></div>
+          <div className="flex-1 space-y-2 py-1">
+              <div className="h-4 bg-white/10 rounded w-1/3"></div>
+              <div className="h-3 bg-white/5 rounded w-1/4"></div>
+          </div>
+      </div>
   );
 
   return (
-    <div className="flex flex-col min-h-full pb-32">
+    <div className="flex flex-col min-h-full pb-32 bg-black">
       
       {/* Search Header */}
-      <div className="sticky top-0 bg-[#050505]/90 backdrop-blur-md z-30 px-4 py-3 flex items-center gap-3 border-b border-white/5">
-         <button onClick={() => navigate(-1)} className="text-white hover:bg-white/10 p-2 rounded-full transition-colors">
-            <ArrowLeft size={24} />
-         </button>
-         <div className="flex-1 relative group">
-            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                <SearchIcon size={20} className="text-[#B3B3B3] group-focus-within:text-white transition-colors" />
-            </div>
-            <input 
-              type="text"
-              className="w-full bg-[#1A1A1A] text-white rounded-full py-3 pl-11 pr-10 focus:outline-none focus:bg-[#252525] focus:ring-1 focus:ring-white/20 placeholder-[#777] font-medium text-base transition-all shadow-inner"
-              placeholder="What do you want to listen to?"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-            />
-            {query && (
-                <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-1">
-                    <X size={18} />
-                </button>
-            )}
+      <div className="sticky top-0 bg-[#121212] z-30 px-4 py-3 border-b border-white/5 transition-colors duration-300">
+         <div className="flex items-center gap-3">
+             <button onClick={() => navigate(-1)} className="text-white hover:bg-white/10 p-2 rounded-full transition-colors active:scale-95 md:hidden">
+                <ArrowLeft size={24} />
+             </button>
+             
+             {/* Premium Search Bar */}
+             <div className={`flex-1 relative group transition-all duration-300 ease-out ${isFocused ? 'scale-[1.01]' : 'scale-100'}`}>
+                {/* Search Icon */}
+                <div className={`absolute inset-y-0 left-3.5 flex items-center pointer-events-none transition-colors duration-300 ${isFocused ? 'text-white' : 'text-[#777]'}`}>
+                     <SearchIcon size={20} />
+                </div>
+                
+                {/* Input Field */}
+                <input 
+                  type="text"
+                  className="w-full bg-[#242424] hover:bg-[#2a2a2a] focus:bg-[#1f1f1f] text-white rounded-full py-3 pl-11 pr-11 outline-none border border-transparent focus:border-white/10 focus:shadow-[0_0_20px_rgba(255,255,255,0.03)] placeholder-[#777] font-medium text-[16px] transition-all duration-300 ease-out"
+                  placeholder="What do you want to listen to?"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
+                  autoFocus={false}
+                />
+                
+                {/* Clear / Loading Action */}
+                {(query || isLoading) && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
+                         {isLoading ? (
+                             <Loader2 size={18} className="text-[#1DB954] animate-spin" />
+                         ) : (
+                             <button onClick={clearSearch} className="text-[#777] hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors">
+                                 <X size={18} />
+                             </button>
+                         )}
+                    </div>
+                )}
+             </div>
          </div>
       </div>
-
-      {/* Default Browse View (Only if no query) */}
+      
+      {/* Browse All (Initial State) */}
       {!query && (
-         <div className="flex flex-col gap-8 p-4 pt-6">
-            <section>
-                <h2 className="text-white font-bold text-lg mb-4">Start browsing</h2>
-                <div className="grid grid-cols-2 gap-4">
-                    <BrowseCard title="Music" color="bg-gradient-to-br from-pink-600 to-purple-700" />
-                    <BrowseCard title="Podcasts" color="bg-gradient-to-br from-teal-600 to-green-700" />
-                    <BrowseCard title="Live Events" color="bg-gradient-to-br from-purple-600 to-indigo-700" />
-                    <BrowseCard title="Home of I-Pop" color="bg-gradient-to-br from-blue-800 to-blue-900" />
-                </div>
-            </section>
-            <section>
-                 <h2 className="text-white font-bold text-lg mb-4">Discover something new</h2>
-                 <div className="grid grid-cols-2 gap-4">
-                     <BrowseCard title="Hindi" color="bg-gradient-to-br from-orange-600 to-red-700" />
-                     <BrowseCard title="Punjabi" color="bg-gradient-to-br from-red-600 to-pink-700" />
-                     <BrowseCard title="Tamil" color="bg-gradient-to-br from-yellow-600 to-orange-700" />
-                     <BrowseCard title="Ghazals" color="bg-gradient-to-br from-indigo-600 to-blue-700" />
-                 </div>
-            </section>
+         <div className="p-4">
+             <h2 className="text-white font-bold text-lg mb-4">Browse all</h2>
+             <motion.div 
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+             >
+                 {BROWSE_CATEGORIES.map((cat, idx) => (
+                     <motion.div 
+                        key={idx} 
+                        variants={itemVariants}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`${cat.color} aspect-[1.6/1] rounded-lg p-4 relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity`}
+                        onClick={() => setQuery(cat.title)} 
+                     >
+                         <h3 className="text-white font-bold text-xl md:text-2xl break-words max-w-[80%] relative z-10 leading-tight">
+                            {cat.title}
+                         </h3>
+                         <div className="absolute -bottom-2 -right-4 w-20 h-20 bg-black/20 rotate-[25deg] shadow-lg rounded-md flex items-center justify-center">
+                         </div>
+                     </motion.div>
+                 ))}
+             </motion.div>
          </div>
       )}
 
-      {/* Search Results */}
+      {/* Loading State Skeleton */}
+      {isLoading && !results.songs.length && (
+          <div className="flex flex-col w-full pt-2">
+              {[1,2,3,4,5].map(i => <ResultSkeleton key={i} />)}
+          </div>
+      )}
+
+      {/* Results */}
       {query && (
         <div className="flex flex-col w-full pb-8">
-            {/* Real Search Suggestions */}
-            {suggestions.length > 0 && results.songs.length > 0 && (
-                <div className="flex flex-col mb-4 pt-2">
-                    {suggestions.map((suggestion, i) => (
-                        <div key={i} className="flex items-center gap-4 px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors" onClick={() => setQuery(suggestion)}>
-                            <div className="w-8 h-8 flex items-center justify-center">
-                                <SearchIcon size={18} className="text-[#B3B3B3]" />
+            
+            {/* 1. Related Keywords (Suggestions) */}
+            {suggestions.length > 0 && (
+                <div className="flex flex-col mb-2">
+                    {suggestions.map((suggestion, idx) => (
+                        <div 
+                            key={idx}
+                            onClick={() => setQuery(suggestion)}
+                            className="flex items-center justify-between px-4 py-3.5 hover:bg-[#1A1A1A] active:bg-[#222] cursor-pointer transition-colors border-b border-white/5 last:border-0"
+                        >
+                            <div className="flex items-center gap-4">
+                                <SearchIcon size={20} className="text-[#B3B3B3]" />
+                                <span className="text-white text-[15px]">{suggestion}</span>
                             </div>
-                            <span className="text-white flex-1 text-base">{suggestion}</span>
-                            <TrendingUp size={16} className="text-[#B3B3B3]" />
+                            <ArrowUpLeft size={18} className="text-[#555] rotate-45" />
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* Song Results List */}
+            {/* 2. Songs List */}
             {results.songs.length > 0 && (
-                <div className="mt-2">
-                     <h2 className="px-4 text-white font-bold mb-3 text-xl">Songs</h2>
-                     {results.songs.map(song => {
+                <div className="animate-in fade-in slide-in-from-bottom-3 duration-300 delay-75">
+                     {/* REMOVED SLICE TO SHOW ALL SONGS */}
+                     {results.songs.map((song) => {
                          const isLiked = likedSongs.some(s => s.id === song.id);
-                         // CRITICAL FIX: Safe access to artists
-                         const artistName = song.artists?.primary?.[0]?.name || song.artists?.all?.[0]?.name || "Unknown Artist";
+                         const artistName = song.artists?.primary?.[0]?.name || "Unknown";
                          
                          return (
-                             <div key={song.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 cursor-pointer group transition-colors rounded-lg mx-2" onClick={() => playSong(song, results.songs)}>
-                                 <div className="relative w-12 h-12 shrink-0">
-                                    <img src={getImageUrl(song.image)} className="w-full h-full rounded-md object-cover shadow-sm group-hover:opacity-80 transition-opacity" alt="" />
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                        <Music size={16} className="text-white drop-shadow-md"/>
-                                    </div>
+                             <div 
+                                key={song.id} 
+                                className="flex items-center gap-3 px-4 py-2 hover:bg-[#1A1A1A] cursor-pointer group transition-colors" 
+                                onClick={() => playSong(song, results.songs)}
+                             >
+                                 <div className="w-12 h-12 shrink-0 relative">
+                                    <img src={getImageUrl(song.image)} className="w-full h-full rounded-[4px] object-cover" alt="" />
                                  </div>
-                                 <div className="flex-1 min-w-0">
-                                     <div className={`font-medium truncate text-[15px] ${false ? 'text-[#1DB954]' : 'text-white'}`}>{song.name}</div>
-                                     <div className="text-[#B3B3B3] text-sm truncate">Song • {artistName}</div>
+                                 <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                                     <div className={`font-medium truncate text-[16px] text-white ${isLiked ? 'text-[#1DB954]' : ''}`}>{song.name}</div>
+                                     <div className="text-[#B3B3B3] text-sm truncate flex items-center gap-1">
+                                        {song.name.toLowerCase().includes('explicit') && (
+                                            <span className="bg-[#B3B3B3] text-black text-[9px] px-1 rounded-[2px] font-bold">E</span>
+                                        )}
+                                        <span>Song • {artistName}</span>
+                                     </div>
                                  </div>
                                  
-                                 {/* Actions */}
                                  <div className="flex items-center gap-4">
                                      <button 
                                         className="text-[#B3B3B3] hover:text-white transition-transform active:scale-90" 
                                         onClick={(e) => { e.stopPropagation(); toggleLike(song); }}
                                      >
                                         {isLiked ? (
-                                            <CheckCircle2 size={24} className="text-[#1DB954] fill-[#1DB954] text-black" />
+                                            <CheckCircle2 size={22} className="text-[#1DB954] fill-[#1DB954] text-black" />
                                         ) : (
-                                            <PlusCircle size={24} />
+                                            <PlusCircle size={22} />
                                         )}
                                      </button>
-                                     <button className="text-[#B3B3B3] hover:text-white" onClick={(e) => { e.stopPropagation(); /* Menu logic */ }}>
+                                     <button className="text-[#B3B3B3] hover:text-white" onClick={(e) => e.stopPropagation()}>
                                          <MoreVertical size={20} />
                                      </button>
                                  </div>
@@ -186,22 +286,15 @@ export const Search: React.FC = () => {
                 </div>
             )}
             
-            {/* Albums Section */}
-            {results.albums.length > 0 && (
-                 <div className="mt-8">
-                    <h2 className="px-4 text-white font-bold mb-3 text-xl">Albums</h2>
-                    <div className="flex flex-col gap-1">
-                    {results.albums.map(album => (
-                        <div key={album.id} className="flex items-center gap-3 px-4 py-2 hover:bg-white/5 cursor-pointer rounded-lg mx-2 transition-colors" onClick={() => navigate(`/album/${album.id}`)}>
-                            <img src={getImageUrl(album.image)} className="w-14 h-14 rounded-md object-cover shadow-sm" alt="" />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-white font-medium truncate text-[15px]">{album.name}</div>
-                                <div className="text-[#B3B3B3] text-sm truncate">Album • {album.artists?.primary?.[0]?.name || "Unknown Artist"}</div>
-                            </div>
-                        </div>
-                    ))}
+            {/* No Results */}
+            {!isLoading && results.songs.length === 0 && suggestions.length === 0 && (
+                <div className="flex flex-col items-center justify-center pt-20 text-[#777]">
+                    <div className="w-20 h-20 bg-[#1A1A1A] rounded-full flex items-center justify-center mb-4">
+                        <SearchIcon size={40} className="opacity-50"/>
                     </div>
-                 </div>
+                    <h3 className="text-white font-bold text-lg">No results found</h3>
+                    <p className="text-sm mt-2">Try searching for a different song or artist.</p>
+                </div>
             )}
         </div>
       )}

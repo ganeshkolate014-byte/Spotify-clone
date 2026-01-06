@@ -2,9 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { api, getImageUrl } from '../services/api';
 import { Song, Album } from '../types';
 import { usePlayerStore } from '../store/playerStore';
-import { Bell, History, Settings, Play, UserCircle } from 'lucide-react';
+import { Bell, History, Settings, Play, UserCircle, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SongCard } from '../components/SongCard';
+import { motion } from 'framer-motion';
+
+// Animation Variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
 
 // Skeleton Component
 const SkeletonCard: React.FC<{ round?: boolean }> = ({ round = false }) => (
@@ -29,13 +47,21 @@ const SkeletonShortcut: React.FC = () => (
 export const Home: React.FC = () => {
   const [daylist, setDaylist] = useState<Song[]>([]);
   const [recent, setRecent] = useState<(Song | Album)[]>([]); 
-  const { history, playSong, currentUser } = usePlayerStore();
+  const { history, playSong, currentUser, isOfflineMode, downloadedSongIds, likedSongs } = usePlayerStore();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
-    // Only fetch if we need to, simulating instant load if cached data existed
-    // But since this is a demo, we will refetch but show skeletons
+    // Only fetch if online
+    if (isOfflineMode) {
+        setIsLoading(false);
+        // Load local content for offline view
+        const offlineSongs = likedSongs.filter(s => downloadedSongIds.includes(s.id));
+        setDaylist(offlineSongs);
+        return;
+    }
+
     const fetchData = async () => {
       setIsLoading(true);
       const hour = new Date().getHours();
@@ -56,13 +82,13 @@ export const Home: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [isOfflineMode]);
 
   useEffect(() => {
     // Populate recent with history or default items
     if (history.length > 0) {
       setRecent(history.slice(0, 6));
-    } else {
+    } else if (!isOfflineMode) {
        // Defaults to populate the grid if empty history
        Promise.all([
          api.searchSongs("The Weeknd"),
@@ -73,12 +99,24 @@ export const Home: React.FC = () => {
           setRecent([...songs.slice(0,1), ...albums.slice(0,1), ...songs2.slice(0,1), ...albums2.slice(0,1)]);
        });
     }
-  }, [history]);
+  }, [history, isOfflineMode]);
+
+  // Scroll listener for header effect (Attached to main container)
+  useEffect(() => {
+    const main = document.querySelector('main');
+    const handleScroll = () => {
+        if (main) setIsScrolled(main.scrollTop > 10);
+    };
+    main?.addEventListener('scroll', handleScroll);
+    return () => main?.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const ShortcutCard: React.FC<{ title: string, image?: string, isLikedSongs?: boolean, onClick?: () => void }> = ({ title, image, isLikedSongs = false, onClick }) => (
-    <div 
+    <motion.div 
+        whileHover={{ scale: 1.02, backgroundColor: '#3E3E3E' }}
+        whileTap={{ scale: 0.98 }}
         onClick={onClick}
-        className="glass-card flex items-center gap-0 cursor-pointer h-[48px] overflow-hidden group rounded-[4px] bg-[#2A2A2A] hover:bg-[#3E3E3E] transition-colors"
+        className="glass-card flex items-center gap-0 cursor-pointer h-[48px] overflow-hidden group rounded-[4px] bg-[#2A2A2A] transition-colors"
     >
         {isLikedSongs ? (
             <div className="h-full w-[48px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 opacity-100">
@@ -90,7 +128,7 @@ export const Home: React.FC = () => {
         <div className="flex flex-1 items-center justify-between pr-2 pl-2 overflow-hidden">
              <span className="font-bold text-[11px] md:text-[13px] leading-tight line-clamp-2 text-white pr-1">{title}</span>
         </div>
-    </div>
+    </motion.div>
   );
 
   const SectionTitle = ({ title }: { title: string }) => (
@@ -106,39 +144,53 @@ export const Home: React.FC = () => {
   };
 
   return (
-    <div className={`flex flex-col gap-6 min-h-full pb-36 pt-2 relative bg-black`}>
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className={`flex flex-col gap-6 min-h-full pb-36 relative bg-black`}
+    >
       
       {/* Top Header */}
-      <div className="px-4 pt-4 flex items-center justify-start gap-3 sticky top-0 z-20 py-2 bg-black/80 backdrop-blur-md transition-all">
+      <div className={`px-4 flex items-center justify-start gap-3 sticky top-0 z-50 py-3 transition-colors duration-200 ${isScrolled ? 'bg-black/95 border-b border-[#282828] shadow-lg' : 'bg-black border-b border-transparent'}`}>
          {/* Profile Icon */}
-         <div 
+         <motion.div 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleProfileClick}
-            className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#1DB954] to-[#1ed760] flex items-center justify-center font-bold text-black text-sm shrink-0 cursor-pointer hover:scale-105 transition-transform overflow-hidden shadow-md"
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#1DB954] to-[#1ed760] flex items-center justify-center font-bold text-black text-sm shrink-0 cursor-pointer overflow-hidden shadow-md"
          >
              {currentUser && currentUser.image ? (
                  <img src={currentUser.image} alt="Profile" className="w-full h-full object-cover" />
              ) : (
                  <span className="font-bold">{currentUser ? currentUser.name.charAt(0).toUpperCase() : <UserCircle size={20} />}</span>
              )}
-         </div>
+         </motion.div>
          
          {/* Filter Chips */}
          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mask-linear-fade">
-             <button className="px-4 py-1.5 bg-[#1DB954] text-black rounded-full text-[13px] font-medium transition-transform shadow-sm whitespace-nowrap active:scale-95">All</button>
-             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333] active:scale-95">Music</button>
-             <button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333] active:scale-95">Podcasts</button>
+             {!isOfflineMode && (
+                <>
+                    <motion.button whileTap={{ scale: 0.95 }} className="px-4 py-1.5 bg-[#1DB954] text-black rounded-full text-[13px] font-medium transition-transform shadow-sm whitespace-nowrap">All</motion.button>
+                    <motion.button whileTap={{ scale: 0.95 }} className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Music</motion.button>
+                </>
+             )}
+             {isOfflineMode && (
+                 <motion.button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium flex items-center gap-2">
+                     <WifiOff size={14} /> Offline Mode
+                 </motion.button>
+             )}
          </div>
       </div>
 
-      {/* Grid Shortcuts (Jump back in) */}
-      <div className="px-4 mt-2">
-          <h2 className="text-2xl font-bold text-white mb-4">Jump back in</h2>
+      {/* Grid Shortcuts */}
+      <motion.div variants={itemVariants} className="px-4 mt-2">
+          <h2 className="text-2xl font-bold text-white mb-4">{isOfflineMode ? "Your Downloads" : "Jump back in"}</h2>
           <div className="grid grid-cols-2 gap-2">
             <ShortcutCard title="Liked Songs" isLikedSongs onClick={() => navigate('/library')} />
-            {isLoading || recent.length === 0 ? (
-                // Skeleton Shortcuts
+            {!isOfflineMode && isLoading ? (
                 Array(5).fill(0).map((_, i) => <SkeletonShortcut key={i} />)
-            ) : (
+            ) : !isOfflineMode ? (
                 recent.slice(0, 5).map((item, idx) => (
                     <ShortcutCard 
                         key={item.id + idx} 
@@ -147,59 +199,66 @@ export const Home: React.FC = () => {
                         onClick={() => item.type === 'song' ? playSong(item as Song, [item as Song]) : navigate(`/album/${item.id}`)}
                     />
                 ))
-            )}
+            ) : null}
           </div>
-      </div>
+      </motion.div>
 
-      {/* Recommended Section */}
-      <section className="mt-2">
-        <SectionTitle title="Made For You" />
+      {/* Recommended / Downloaded Section */}
+      <motion.section variants={itemVariants} className="mt-2">
+        <SectionTitle title={isOfflineMode ? "Downloaded Music" : "Made For You"} />
         <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {isLoading ? (
+            {isLoading && !isOfflineMode ? (
                  Array(6).fill(0).map((_, i) => <SkeletonCard key={i} />)
-            ) : (
+            ) : daylist.length > 0 ? (
                  daylist.map((item, i) => (
                     <div key={i} className="snap-start">
                         <SongCard item={item} onPlay={() => playSong(item, daylist)} />
                     </div>
                  ))
+            ) : (
+                <div className="text-[#777] px-4 text-sm">
+                    {isOfflineMode ? "No downloaded music available." : "No recommendations yet."}
+                </div>
             )}
         </div>
-      </section>
+      </motion.section>
 
-      {/* Popular Artists */}
-       <section>
-        <SectionTitle title="Your favorite artists" />
-        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {isLoading ? (
-                 Array(6).fill(0).map((_, i) => <SkeletonCard key={i} round={true} />)
-            ) : (
-                 daylist.slice(0,6).map((item, i) => (
-                    <div key={i} className="snap-start">
-                        <SongCard item={item} round={true} />
-                    </div>
-                 ))
-            )}
-        </div>
-      </section>
-      
-       {/* Recently Played */}
-      <section>
-        <SectionTitle title="Recently played" />
-        <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
-            {isLoading ? (
-                 Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)
-            ) : recent.length > 0 ? (
-                recent.map((item, i) => (
-                    <div key={i} className="snap-start">
-                        <SongCard item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
-                    </div>
-                ))
-            ) : (
-                 <div className="text-[#B3B3B3] text-sm px-4 h-[100px] flex items-center">Play some music to see it here.</div>
-            )}
-        </div>
-      </section>
-    </div>
+      {/* Hide online sections if offline */}
+      {!isOfflineMode && (
+          <>
+            <motion.section variants={itemVariants}>
+                <SectionTitle title="Your favorite artists" />
+                <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
+                    {isLoading ? (
+                        Array(6).fill(0).map((_, i) => <SkeletonCard key={i} round={true} />)
+                    ) : (
+                        daylist.slice(0,6).map((item, i) => (
+                            <div key={i} className="snap-start">
+                                <SongCard item={item} round={true} />
+                            </div>
+                        ))
+                    )}
+                </div>
+            </motion.section>
+            
+            <motion.section variants={itemVariants}>
+                <SectionTitle title="Recently played" />
+                <div className="flex overflow-x-auto gap-4 pb-4 no-scrollbar px-4 snap-x">
+                    {isLoading ? (
+                        Array(4).fill(0).map((_, i) => <SkeletonCard key={i} />)
+                    ) : recent.length > 0 ? (
+                        recent.map((item, i) => (
+                            <div key={i} className="snap-start">
+                                <SongCard item={item} onPlay={() => item.type === 'song' && playSong(item as Song, [item as Song])} />
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-[#B3B3B3] text-sm px-4 h-[100px] flex items-center">Play some music to see it here.</div>
+                    )}
+                </div>
+            </motion.section>
+          </>
+      )}
+    </motion.div>
   );
 };

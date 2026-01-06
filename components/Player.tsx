@@ -1,8 +1,19 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Share2, ListMusic, Heart, Loader2, Shuffle, Repeat, Mic2, PlusCircle, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
-import { getImageUrl, getAudioUrl, api } from '../services/api';
-import { AnimatePresence, motion } from 'framer-motion';
+import { getImageUrl, getAudioUrl, getOfflineAudioUrl } from '../services/api';
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
+import { DownloadQualityModal } from './DownloadQualityModal';
+import { Song } from '../types';
+import { useNavigate } from 'react-router-dom';
+
+// Faster, snappier transition config for the Player expansion
+const transition = {
+  type: "spring",
+  stiffness: 350,
+  damping: 30,
+  mass: 0.8
+};
 
 export const Player: React.FC = () => {
   const { 
@@ -16,29 +27,34 @@ export const Player: React.FC = () => {
     setIsBuffering,
     nextSong, 
     prevSong,
-    queue,
-    setQueue,
     likedSongs,
     toggleLike,
-    isShuffling
+    isShuffling,
+    streamingQuality,
+    isOfflineMode,
+    downloadedSongIds,
+    addSongToPlaylist
   } = usePlayerStore();
 
+  const navigate = useNavigate();
   const audioRef = useRef<HTMLAudioElement>(null);
+  
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [dominantColor, setDominantColor] = useState<string>('#121212');
   const [isDragging, setIsDragging] = useState(false);
+  
+  const [downloadSong, setDownloadSong] = useState<Song | null>(null);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
 
-  // Swipe State
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
 
-  // Check if current song is liked
   const isLiked = currentSong ? likedSongs.some(s => s.id === currentSong.id) : false;
+  const isDownloaded = currentSong ? downloadedSongIds.includes(currentSong.id) : false;
 
-  // Extract Dominant Color
   useEffect(() => {
     if (!currentSong) return;
-
     const imgUrl = getImageUrl(currentSong.image);
     const img = new Image();
     img.crossOrigin = "Anonymous";
@@ -49,55 +65,48 @@ export const Player: React.FC = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-
-        canvas.width = 1;
+        canvas.width = 1; 
         canvas.height = 1;
         ctx.drawImage(img, 0, 0, 1, 1);
-        
         const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-        setDominantColor(`rgb(${r},${g},${b})`);
+        setDominantColor(`rgb(${Math.max(20, r - 30)},${Math.max(20, g - 30)},${Math.max(20, b - 30)})`);
       } catch (e) {
-        setDominantColor('#2a2a2a'); 
+        setDominantColor('#181818'); 
       }
     };
-    
-    img.onerror = () => setDominantColor('#2a2a2a');
+    img.onerror = () => setDominantColor('#181818');
+  }, [currentSong?.id]);
 
-  }, [currentSong]);
-
-  // Handle Song Change & Streaming
   useEffect(() => {
     if (!currentSong || !audioRef.current) return;
-
-    const url = getAudioUrl(currentSong.downloadUrl);
     
-    // Set source directly for streaming
-    if (audioRef.current.src !== url) {
-        audioRef.current.src = url;
-        audioRef.current.load();
-        
-        if (isPlaying) {
-             const playPromise = audioRef.current.play();
-             if (playPromise !== undefined) {
-                 playPromise.catch(error => {
-                     console.warn("Autoplay prevented:", error);
-                     setIsPlaying(false);
-                 });
-             }
+    const setAudioSource = async () => {
+        let url = '';
+        if (isOfflineMode || downloadedSongIds.includes(currentSong.id)) {
+            const blobUrl = await getOfflineAudioUrl(currentSong.id);
+            if (blobUrl) url = blobUrl;
+            else if (isOfflineMode) { setIsPlaying(false); return; }
         }
-    }
-  }, [currentSong?.id]); 
+        if (!url && !isOfflineMode) {
+             url = getAudioUrl(currentSong.downloadUrl, streamingQuality);
+        }
+        if (url && audioRef.current && audioRef.current.src !== url) {
+            const wasPlaying = isPlaying;
+            audioRef.current.src = url;
+            audioRef.current.load();
+            if (wasPlaying) {
+                 audioRef.current.play().catch(() => setIsPlaying(false));
+            }
+        }
+    };
+    setAudioSource();
+  }, [currentSong?.id, streamingQuality, isOfflineMode]);
 
-  // Handle Play/Pause State
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    if (isPlaying && audio.paused) {
-      audio.play().catch(e => console.warn("Play interrupted", e));
-    } else if (!isPlaying && !audio.paused) {
-      audio.pause();
-    }
+    if (isPlaying && audio.paused) audio.play().catch(e => console.warn("Play interrupted", e));
+    else if (!isPlaying && !audio.paused) audio.pause();
   }, [isPlaying]);
 
   const handleTimeUpdate = () => {
@@ -107,41 +116,10 @@ export const Player: React.FC = () => {
     }
   };
 
-  const handleEnded = async () => {
-    if (currentSong && queue.findIndex(s => s.id === currentSong.id) === queue.length - 1) {
-       try {
-         const artist = currentSong.artists?.primary?.[0]?.name || "";
-         const query = `${artist} ${currentSong.language} songs`; 
-         const similarSongs = await api.searchSongs(query);
-         const newSongs = similarSongs.filter(s => !queue.some(q => q.id === s.id)).slice(0, 5);
-         
-         if (newSongs.length > 0) {
-            setQueue([...queue, ...newSongs]);
-         }
-       } catch (e) {
-         console.error("Auto-queue failed", e);
-       } finally {
-         nextSong();
-       }
-    } else {
-      nextSong();
-    }
-  };
-
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     setProgress(time);
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-    }
-  };
-  
-  const handleSeekStart = () => setIsDragging(true);
-  const handleSeekEnd = (e: React.TouchEvent | React.MouseEvent | any) => {
-      setIsDragging(false);
-       if (audioRef.current) {
-         audioRef.current.currentTime = progress;
-       }
+    if (audioRef.current) audioRef.current.currentTime = time;
   };
 
   const formatTime = (seconds: number) => {
@@ -151,260 +129,295 @@ export const Player: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Swipe Handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStart) return;
-
     const touchEndX = e.changedTouches[0].clientX;
     const touchEndY = e.changedTouches[0].clientY;
-
     const diffX = touchStart.x - touchEndX;
     const diffY = touchStart.y - touchEndY;
 
-    // Horizontal Swipe (Next/Prev)
+    // Horizontal Swipe for Song Change
     if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > 0) nextSong();
       else prevSong();
     }
-    
-    // Vertical Swipe (Down -> Close)
-    if (diffY < -100 && Math.abs(diffY) > Math.abs(diffX)) {
+    // Vertical Swipe Down to Close Player (only if not in menu)
+    if (diffY < -80 && Math.abs(diffY) > Math.abs(diffX) && !isMoreMenuOpen) {
         setFullScreen(false);
     }
-
     setTouchStart(null);
   };
 
   if (!currentSong) return null;
 
   const imageUrl = getImageUrl(currentSong.image);
-  const primaryArtistName = currentSong.artists?.primary?.[0]?.name || currentSong.artists?.all?.[0]?.name || "Unknown Artist";
-  
+  const primaryArtistName = currentSong.artists?.primary?.[0]?.name || "Unknown";
+
   return (
     <>
         <audio 
             ref={audioRef}
             preload="auto"
             onTimeUpdate={handleTimeUpdate}
-            onEnded={handleEnded}
+            onEnded={nextSong}
             onWaiting={() => setIsBuffering(true)}
             onPlaying={() => setIsBuffering(false)}
             onCanPlay={() => setIsBuffering(false)}
             onPause={() => {
-                // Only sync state if it wasn't a seek/buffer pause
-                if (isPlaying && !isBuffering && audioRef.current?.paused && audioRef.current?.readyState > 2) setIsPlaying(false);
+                if (isPlaying && !isBuffering && audioRef.current?.paused) setIsPlaying(false);
             }}
             onPlay={() => !isPlaying && setIsPlaying(true)}
-            onError={() => { setIsBuffering(false); setIsPlaying(false); }}
         />
 
-        <AnimatePresence>
-        {isFullScreen && (
-        <motion.div 
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed inset-0 z-[200] flex flex-col bg-[#000000] overflow-hidden font-sans"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-        >
-            {/* Dynamic Background */}
-            <div className="absolute inset-0 z-0 overflow-hidden">
-                <div 
-                    className="absolute inset-0 transition-colors duration-1000 ease-in-out opacity-40"
-                    style={{ background: `linear-gradient(to bottom, ${dominantColor}, #121212)` }}
-                />
-            </div>
-
-            {/* Main Content */}
-            <div className="relative z-10 flex flex-col h-full text-white px-6 pb-8 pt-4 md:px-12 md:pb-12">
-                
-                {/* Header */}
-                <div className="flex items-center justify-between shrink-0 h-16">
-                    <button onClick={() => setFullScreen(false)} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors active:scale-90">
-                        <ChevronDown size={28} className="text-white" />
-                    </button>
-                    <div className="flex flex-col items-center opacity-0 md:opacity-100 transition-opacity">
-                        <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/60">Playing From</span>
-                        <span className="text-xs font-bold text-white">Artist Radio</span>
-                    </div>
-                    <button className="p-2 -mr-2 hover:bg-white/10 rounded-full transition-colors active:scale-90">
-                        <MoreHorizontal size={24} className="text-white" />
-                    </button>
-                </div>
-
-                {/* Album Art Section */}
-                <div className="flex-1 flex items-center justify-center py-6 min-h-0">
-                     <div className="relative w-full max-w-[350px] aspect-square group">
-                        <img 
-                            src={imageUrl} 
-                            alt={currentSong.name} 
-                            className="relative w-full h-full object-cover rounded-md shadow-2xl transition-transform duration-500 ease-out" 
-                        />
-                     </div>
-                </div>
-
-                {/* Track Info & Controls */}
-                <div className="flex flex-col gap-6 shrink-0 w-full max-w-lg mx-auto mb-6 md:mb-10">
-                    
-                    {/* Metadata */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col overflow-hidden mr-6 flex-1">
-                            <div className="h-8 md:h-10 relative overflow-hidden w-full">
-                                <h1 className={`text-2xl md:text-3xl font-bold text-white whitespace-nowrap ${currentSong.name.length > 20 ? 'animate-marquee pl-[100%]' : ''}`}>
-                                    {currentSong.name}
-                                </h1>
-                            </div>
-                            <p className="text-white/60 text-lg md:text-xl truncate font-medium -mt-1">
-                                {primaryArtistName}
-                            </p>
-                        </div>
-                        <button onClick={() => toggleLike(currentSong)} className="transition-all active:scale-75 hover:scale-110 shrink-0">
-                            {isLiked ? (
-                                <CheckCircle2 size={28} className="text-[#1DB954] fill-[#1DB954] text-black" />
-                            ) : (
-                                <PlusCircle size={28} className="text-white/60 hover:text-white" />
-                            )}
-                        </button>
-                    </div>
-
-                    {/* Custom Scrubber */}
-                    <div className="group flex flex-col gap-2 pt-2">
-                        <div className="relative h-1 w-full bg-white/20 rounded-full touch-none group-hover:h-1.5 transition-all duration-300">
-                             {/* Fill */}
-                             <div 
-                                className="absolute left-0 top-0 bottom-0 bg-white rounded-full transition-all duration-100 ease-linear"
-                                style={{ width: `${(progress / (duration || 1)) * 100}%` }}
-                             >
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity scale-0 group-hover:scale-100"></div>
-                             </div>
-                             {/* Input for interaction */}
-                             <input 
-                                type="range" 
-                                min="0" 
-                                max={duration || 100} 
-                                value={progress}
-                                onChange={handleSeek}
-                                onTouchStart={handleSeekStart}
-                                onTouchEnd={handleSeekEnd}
-                                onMouseDown={handleSeekStart}
-                                onMouseUp={handleSeekEnd}
-                                disabled={isBuffering}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 disabled:cursor-wait"
-                            />
-                        </div>
-                        <div className="flex justify-between text-[11px] text-white/40 font-bold tracking-wide font-mono">
-                            <span>{formatTime(progress)}</span>
-                            <span>{formatTime(duration)}</span>
-                        </div>
-                    </div>
-
-                    {/* Main Controls */}
-                    <div className="flex items-center justify-between -mx-2">
-                        <button className={`p-2 transition-colors hover:text-white ${isShuffling ? 'text-[#1DB954]' : 'text-white/40'}`}>
-                            <Shuffle size={20} />
-                        </button>
-                        
-                        <div className="flex items-center gap-6 md:gap-10">
-                            <button onClick={prevSong} className="text-white hover:text-white/70 transition-transform active:scale-75">
-                                <SkipBack size={32} fill="currentColor" />
-                            </button>
-                            
-                            <button 
-                                onClick={togglePlay}
-                                disabled={isBuffering}
-                                className="bg-white text-black rounded-full w-16 h-16 md:w-16 md:h-16 flex items-center justify-center hover:scale-105 active:scale-90 transition-all shadow-md disabled:opacity-50 disabled:scale-100"
-                            >
-                                {isBuffering ? (
-                                    <Loader2 size={28} className="animate-spin" />
-                                ) : isPlaying ? (
-                                    <Pause size={28} fill="currentColor" />
-                                ) : (
-                                    <Play size={28} fill="currentColor" className="ml-1" />
-                                )}
-                            </button>
-
-                            <button onClick={nextSong} className="text-white hover:text-white/70 transition-transform active:scale-75">
-                                <SkipForward size={32} fill="currentColor" />
-                            </button>
-                        </div>
-
-                        <button className="p-2 text-white/40 hover:text-white transition-colors">
-                            <Repeat size={20} />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Bottom Actions */}
-                <div className="flex items-center justify-between px-2 md:px-6">
-                    <button className="text-white/50 hover:text-white transition-colors active:scale-90"><Share2 size={20} /></button>
-                    <div className="flex items-center gap-6">
-                        <button className="text-white/50 hover:text-white transition-colors active:scale-90"><Mic2 size={20} /></button>
-                        <button className="text-white/50 hover:text-white transition-colors active:scale-90"><ListMusic size={22} /></button>
-                    </div>
-                </div>
-            </div>
-        </motion.div>
-        )}
-        </AnimatePresence>
-
-        {/* --- MINI PLAYER --- */}
-        <AnimatePresence>
-        {!isFullScreen && (
-            <motion.div 
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 20, opacity: 0 }}
-                onClick={() => setFullScreen(true)}
-                className="fixed bottom-[65px] md:bottom-4 left-2 right-2 md:left-[50%] md:right-auto md:translate-x-[-50%] md:w-[420px] h-[56px] bg-[#3E3E3E] rounded-md flex items-center pr-3 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-[150] cursor-pointer overflow-hidden group transition-colors"
-            >
-                {/* Artwork */}
-                <div className="relative h-10 w-10 rounded-[4px] overflow-hidden ml-2 mr-3 shrink-0">
-                   <img src={imageUrl} alt="cover" className="h-full w-full object-cover" />
-                </div>
-                
-                {/* Text */}
-                <div className="flex-1 min-w-0 flex flex-col justify-center mr-2">
-                    <div className="flex items-center gap-2">
-                        <span className={`text-white font-medium text-sm truncate ${isPlaying ? 'text-[#1DB954]' : ''}`}>{currentSong.name}</span>
-                        <span className="text-white/60 text-xs truncate">• {primaryArtistName}</span>
-                    </div>
-                </div>
-
-                {/* Controls */}
-                <div className="flex items-center gap-3">
-                     <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong); }} className="text-white/40 hover:text-[#1DB954] transition-colors active:scale-90 hidden sm:block">
-                        <Heart size={20} fill={isLiked ? "#1DB954" : "transparent"} className={isLiked ? "text-[#1DB954]" : ""} />
-                     </button>
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); togglePlay(); }} 
-                        className="text-white h-9 w-9 flex items-center justify-center hover:scale-105 active:scale-90 transition-all"
+        <MotionConfig transition={transition}>
+            <AnimatePresence>
+                {isFullScreen ? (
+                    <motion.div 
+                        key="full-player"
+                        layoutId="player-root"
+                        className="fixed inset-0 z-[200] flex flex-col overflow-hidden isolate"
+                        onClick={(e) => e.stopPropagation()}
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={handleTouchEnd}
                     >
-                        {isBuffering ? (
-                            <Loader2 size={24} className="animate-spin text-white/70" />
-                        ) : isPlaying ? (
-                            <Pause size={24} fill="currentColor" />
-                        ) : (
-                            <Play size={24} fill="currentColor" />
-                        )}
-                     </button>
-                </div>
-                
-                 {/* Progress Bar (Bottom Line) */}
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/10">
-                     <div 
-                        className="h-full bg-white/90 rounded-r-full transition-all duration-200" 
-                        style={{ width: `${(progress / (duration || 1)) * 100}%` }}
-                    ></div>
-                </div>
-            </motion.div>
+                        {/* 1. Shared Background */}
+                        <motion.div 
+                            layoutId="player-bg"
+                            className="absolute inset-0 z-[-1] bg-[#121212]"
+                            style={{ 
+                                background: `linear-gradient(to bottom, ${dominantColor}, #121212)`,
+                            }}
+                        />
+
+                        {/* FULL PLAYER CONTENT */}
+                        <div className="relative z-10 flex flex-col h-full px-6 pt-safe-top pb-safe-bottom">
+                            
+                            {/* Header */}
+                            <motion.div 
+                                className="flex items-center justify-between h-16 shrink-0 mt-2"
+                                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                            >
+                                <button onClick={() => setFullScreen(false)} className="p-2 -ml-2 rounded-full hover:bg-white/10 shrink-0">
+                                    <ChevronDown size={28} className="text-white" />
+                                </button>
+                                <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-white/70">
+                                    Now Playing
+                                </span>
+                                <button onClick={() => setIsMoreMenuOpen(true)} className="p-2 -mr-2 rounded-full hover:bg-white/10 shrink-0">
+                                    <MoreHorizontal size={24} className="text-white" />
+                                </button>
+                            </motion.div>
+
+                            {/* Main Artwork Area */}
+                            <div className="flex-1 flex flex-col justify-center min-h-0 relative my-4">
+                                <div className="relative w-full aspect-square max-w-[340px] mx-auto">
+                                    <motion.img 
+                                        layoutId="player-image"
+                                        src={imageUrl} 
+                                        alt="Cover"
+                                        className="w-full h-full object-cover rounded-xl shadow-2xl"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Info & Controls */}
+                            <div className="flex flex-col gap-6 mb-10">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex flex-col overflow-hidden mr-4 min-w-0">
+                                        <motion.h2 
+                                            layoutId="player-title"
+                                            className="text-2xl font-bold text-white truncate"
+                                        >
+                                            {currentSong.name}
+                                        </motion.h2>
+                                        <motion.p 
+                                            layoutId="player-artist"
+                                            className="text-lg text-white/70 truncate"
+                                        >
+                                            {primaryArtistName}
+                                        </motion.p>
+                                    </div>
+                                    <button onClick={() => toggleLike(currentSong)} className="shrink-0">
+                                        {isLiked ? <CheckCircle2 size={28} className="text-[#1DB954] fill-black" /> : <PlusCircle size={28} className="text-white/70" />}
+                                    </button>
+                                </div>
+
+                                {/* Scrubber */}
+                                <motion.div 
+                                    className="flex flex-col gap-2"
+                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                >
+                                    <div className="relative h-1 w-full bg-white/20 rounded-full group hover:h-1.5 transition-all">
+                                         <div className="absolute left-0 top-0 bottom-0 bg-white rounded-full" style={{ width: `${(progress / (duration || 1)) * 100}%` }}>
+                                            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100"></div>
+                                         </div>
+                                         <input 
+                                            type="range" min="0" max={duration || 100} value={progress}
+                                            onChange={handleSeek}
+                                            onMouseDown={() => setIsDragging(true)}
+                                            onTouchStart={() => setIsDragging(true)}
+                                            onMouseUp={() => setIsDragging(false)}
+                                            onTouchEnd={() => setIsDragging(false)}
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-[11px] text-white/50 font-mono font-medium">
+                                        <span>{formatTime(progress)}</span>
+                                        <span>{formatTime(duration)}</span>
+                                    </div>
+                                </motion.div>
+
+                                {/* Controls */}
+                                <motion.div 
+                                    className="flex items-center justify-between px-2"
+                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                >
+                                    <button className={`shrink-0 ${isShuffling ? 'text-[#1DB954]' : 'text-white/40'}`}><Shuffle size={20} /></button>
+                                    <button onClick={prevSong} className="shrink-0"><SkipBack size={32} className="text-white" fill="white" /></button>
+                                    <button 
+                                        onClick={togglePlay}
+                                        className="w-16 h-16 bg-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shrink-0"
+                                    >
+                                        {isBuffering ? <Loader2 size={32} className="animate-spin text-black" /> : isPlaying ? <Pause size={32} fill="black" className="text-black" /> : <Play size={32} fill="black" className="ml-1 text-black" />}
+                                    </button>
+                                    <button onClick={nextSong} className="shrink-0"><SkipForward size={32} className="text-white" fill="white" /></button>
+                                    <button className="text-white/40 shrink-0"><Repeat size={20} /></button>
+                                </motion.div>
+
+                                {/* Bottom Row */}
+                                <motion.div 
+                                    className="flex items-center justify-between px-4"
+                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                >
+                                    <button onClick={() => setDownloadSong(currentSong)} className={`shrink-0 ${isDownloaded ? 'text-[#1DB954]' : 'text-white/50'}`}>
+                                        <Download size={22} />
+                                    </button>
+                                    <button className="text-white/50 shrink-0"><ListMusic size={22} /></button>
+                                </motion.div>
+                            </div>
+                        </div>
+
+                        {/* More Menu (Swipe to Close) - Smooth Tween Animation */}
+                        <AnimatePresence>
+                            {isMoreMenuOpen && (
+                                <motion.div 
+                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                    className="absolute inset-0 z-[250] bg-black/60 backdrop-blur-sm flex flex-col justify-end"
+                                    onClick={() => setIsMoreMenuOpen(false)}
+                                >
+                                    <motion.div 
+                                        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                                        transition={{ type: "tween", ease: "circOut", duration: 0.3 }}
+                                        drag="y"
+                                        dragConstraints={{ top: 0 }}
+                                        dragElastic={{ top: 0, bottom: 0.2 }}
+                                        onDragEnd={(_, info) => {
+                                            if (info.offset.y > 100 || info.velocity.y > 100) {
+                                                setIsMoreMenuOpen(false);
+                                            }
+                                        }}
+                                        className="bg-[#1E1E1E] rounded-t-2xl p-4 flex flex-col gap-4 pb-10"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        {/* Drag Handle */}
+                                        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-2 shrink-0"></div>
+                                        
+                                        <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                                            <img src={getImageUrl(currentSong.image)} className="w-12 h-12 rounded-md object-cover" alt="" />
+                                            <div>
+                                                <div className="font-bold text-white">{currentSong.name}</div>
+                                                <div className="text-sm text-white/50">{primaryArtistName}</div>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => { setShowPlaylistSelector(true); setIsMoreMenuOpen(false); }} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><ListPlus /> Add to Playlist</button>
+                                        <button onClick={() => navigate(`/artist/${currentSong.artists.primary[0].id}`, { state: { artist: currentSong.artists.primary[0] } })} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><User /> View Artist</button>
+                                        <button onClick={() => navigate(`/album/${currentSong.album.id}`)} className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><Disc /> View Album</button>
+                                        <button className="flex gap-4 items-center text-white font-medium p-3 hover:bg-white/5 rounded-lg transition-colors"><Share2 /> Share</button>
+                                    </motion.div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </motion.div>
+                ) : (
+                    <motion.div 
+                        key="mini-player"
+                        layoutId="player-root"
+                        className="fixed bottom-[68px] md:bottom-4 left-2 right-2 md:left-1/2 md:-translate-x-1/2 md:w-[450px] h-[56px] z-[150] cursor-pointer isolate"
+                        onClick={() => setFullScreen(true)}
+                    >
+                        {/* 1. Shared Background */}
+                        <motion.div 
+                            layoutId="player-bg"
+                            className="absolute inset-0 z-[-1] rounded-lg shadow-xl overflow-hidden"
+                            style={{ backgroundColor: dominantColor }}
+                        >
+                             <div className="absolute inset-0 bg-black/20" />
+                        </motion.div>
+
+                        <div className="flex items-center h-full px-2 gap-3">
+                            {/* Shared Image */}
+                            <motion.div 
+                                layoutId="player-image"
+                                className="h-10 w-10 shrink-0 rounded-[4px] overflow-hidden shadow-sm"
+                            >
+                                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                            </motion.div>
+
+                            {/* Text Info */}
+                            <div className="flex-1 flex flex-col justify-center min-w-0 pr-2">
+                                <motion.span 
+                                    layoutId="player-title"
+                                    className="text-white font-bold text-xs truncate"
+                                >
+                                    {currentSong.name}
+                                </motion.span>
+                                <motion.span 
+                                    layoutId="player-artist"
+                                    className="text-white/70 text-[10px] truncate"
+                                >
+                                    {primaryArtistName}
+                                </motion.span>
+                            </div>
+
+                            {/* Controls (No shared layout ID to prevent morphing issues) */}
+                            <motion.div 
+                                className="flex items-center gap-3 pr-1 shrink-0"
+                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            >
+                                <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong); }} className="shrink-0">
+                                    <Heart size={20} fill={isLiked ? "#1DB954" : "none"} className={isLiked ? "text-[#1DB954]" : "text-white"} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="shrink-0">
+                                    {isBuffering ? (
+                                        <Loader2 size={24} className="animate-spin text-white" />
+                                    ) : isPlaying ? (
+                                        <Pause size={24} fill="white" className="text-white" />
+                                    ) : (
+                                        <Play size={24} fill="white" className="text-white" />
+                                    )}
+                                </button>
+                            </motion.div>
+                        </div>
+                        
+                        {/* Progress Bar (Mini only) */}
+                        <motion.div 
+                            className="absolute bottom-0 left-1 right-1 h-[2px] bg-white/20 rounded-full overflow-hidden"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        >
+                            <div className="h-full bg-white rounded-full" style={{ width: `${(progress / (duration || 1)) * 100}%` }}></div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </MotionConfig>
+
+        {downloadSong && (
+            <DownloadQualityModal song={downloadSong} onClose={() => setDownloadSong(null)} />
         )}
-        </AnimatePresence>
     </>
   );
 };

@@ -1,25 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { authService } from '../services/auth';
 import { getImageUrl, api } from '../services/api';
-import { Play, Pause, Clock3, MoreHorizontal, Trash2, Music, ArrowLeft, Search, Plus, CheckCircle2, Download, Heart, Share2 } from 'lucide-react';
+import { Play, Pause, Clock3, MoreHorizontal, Trash2, Music, ArrowLeft, Search, Plus, CheckCircle2, Download, Heart, Share2, Check } from 'lucide-react';
 import { Song, UserPlaylist } from '../types';
 
 export const PlaylistDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { userPlaylists, playSong, currentSong, isPlaying, removePlaylist, addSongToPlaylist, importPlaylist } = usePlayerStore();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   
-  // State for handling fetched shared playlists
   const [viewPlaylist, setViewPlaylist] = useState<UserPlaylist | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState(false);
   
-  // Check if it's already in my library
   const isMyPlaylist = userPlaylists.some(p => p.id === id);
+
+  // Scroll listener attached to MAIN container to fix overlapping issues
+  useEffect(() => {
+    const main = document.querySelector('main');
+    const handleScroll = () => {
+        if (main) setIsScrolled(main.scrollTop > 100);
+    };
+    main?.addEventListener('scroll', handleScroll);
+    return () => main?.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
       const loadPlaylist = async () => {
@@ -97,7 +108,10 @@ export const PlaylistDetails: React.FC = () => {
   const handleShare = () => {
       const url = window.location.href;
       navigator.clipboard.writeText(url).then(() => {
-          alert("Link copied to clipboard!");
+          setShareFeedback(true);
+          setTimeout(() => setShareFeedback(false), 2000);
+      }).catch(err => {
+          console.error("Failed to copy", err);
       });
   };
 
@@ -108,75 +122,91 @@ export const PlaylistDetails: React.FC = () => {
   const imageUrl = getImageUrl(viewPlaylist.image);
 
   return (
-    <div className="min-h-full pb-32 bg-[#121212] relative">
+    <div className="min-h-full pb-32 bg-[#121212] relative isolate">
       {/* Background Gradient based on playlist */}
-      <div className="absolute top-0 left-0 right-0 h-[400px] bg-gradient-to-b from-[#404040] to-[#121212] -z-10 opacity-60"></div>
+      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-[#505050] via-[#2a2a2a] to-[#121212] -z-10 opacity-100 transition-all duration-700"></div>
 
-      {/* Header */}
-      <div className="sticky top-0 z-30 px-6 py-4 flex items-center justify-between bg-transparent transition-colors">
-          <button 
-            onClick={() => navigate(-1)} 
-            className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white backdrop-blur-md"
-          >
-             <ArrowLeft size={20} />
-          </button>
+      {/* Sticky Header */}
+      <div className={`sticky top-0 z-50 h-[64px] px-6 flex items-center justify-between transition-colors duration-200 ${isScrolled ? 'bg-[#121212] border-b border-[#282828]' : 'bg-transparent border-b border-transparent'}`}>
+          <div className="flex items-center gap-4">
+              <button 
+                onClick={() => navigate(-1)} 
+                className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-all active:scale-95"
+              >
+                 <ArrowLeft size={20} />
+              </button>
+              <span className={`font-bold text-lg text-white transition-opacity duration-300 ${isScrolled ? 'opacity-100' : 'opacity-0'}`}>
+                  {viewPlaylist.title}
+              </span>
+          </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
              <button 
                 onClick={handleShare}
-                className="w-8 h-8 rounded-full bg-black/40 hover:bg-white/10 flex items-center justify-center text-white backdrop-blur-md transition-colors"
-                title="Share Playlist"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                    shareFeedback 
+                    ? 'bg-green-500 border-green-500 text-black' 
+                    : 'bg-black/20 hover:bg-white/10 text-white border-white/10'
+                }`}
+                title="Copy Link"
              >
-                 <Share2 size={16} />
+                 {shareFeedback ? <Check size={14} strokeWidth={3} /> : <Share2 size={14} />}
+                 <span className="hidden sm:block">{shareFeedback ? 'Copied' : 'Share'}</span>
              </button>
             {isMyPlaylist ? (
                 <button 
                     onClick={handleDelete}
-                    className="w-8 h-8 rounded-full bg-black/40 hover:bg-red-500/80 flex items-center justify-center text-white backdrop-blur-md transition-colors"
+                    className="w-9 h-9 rounded-full bg-black/20 hover:bg-red-500/20 hover:text-red-500 flex items-center justify-center text-white/70 transition-colors"
                     title="Delete Playlist"
                 >
-                    <Trash2 size={16} />
+                    <Trash2 size={18} />
                 </button>
             ) : (
                  <button 
                     onClick={handleImport}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-white text-black rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg"
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-full font-bold text-xs md:text-sm hover:scale-105 transition-transform shadow-lg"
                 >
-                    <Heart size={16} fill="black" /> Add to Library
+                    <Heart size={16} fill={userPlaylists.some(p => p.id === viewPlaylist.id) ? "black" : "none"} /> 
+                    {userPlaylists.some(p => p.id === viewPlaylist.id) ? 'Saved' : 'Save'}
                 </button>
             )}
           </div>
       </div>
 
-      {/* Playlist Hero */}
-      <div className="flex flex-col md:flex-row items-end gap-6 p-6 md:p-8 -mt-10">
-        <div className="w-[190px] h-[190px] md:w-[230px] md:h-[230px] shadow-[0_30px_60px_rgba(0,0,0,0.5)] bg-[#282828] flex items-center justify-center overflow-hidden shrink-0 group rounded-md">
+      {/* Hero Content */}
+      <div className="flex flex-col md:flex-row items-end gap-6 p-6 md:p-10 pt-2">
+        <div className="w-[180px] h-[180px] md:w-[240px] md:h-[240px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-[#282828] flex items-center justify-center overflow-hidden shrink-0 group rounded-lg relative">
              {viewPlaylist.image && (viewPlaylist.image[0].url.includes('unsplash') || viewPlaylist.image[0].url.includes('cloudinary')) ? (
                  <img src={imageUrl} alt={viewPlaylist.title} className="w-full h-full object-cover shadow-2xl" />
              ) : (
-                 <Music size={80} className="text-white/20" />
+                 <div className="flex flex-col items-center gap-2">
+                    <Music size={60} className="text-white/20" />
+                 </div>
              )}
         </div>
-        <div className="flex flex-col gap-2 mb-2 w-full">
-            <span className="uppercase text-xs font-bold tracking-wider text-white">Playlist</span>
-            <h1 className="text-4xl md:text-7xl lg:text-8xl font-black tracking-tight text-white leading-none break-words line-clamp-2 drop-shadow-lg">{viewPlaylist.title}</h1>
-            <p className="text-white/70 text-sm mt-2 line-clamp-2 font-medium">{viewPlaylist.description}</p>
-            <div className="flex items-center flex-wrap gap-2 text-sm font-bold text-white mt-2">
-                <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[10px] text-black">
-                    {viewPlaylist.creator ? viewPlaylist.creator.charAt(0).toUpperCase() : 'U'}
+        <div className="flex flex-col gap-2 mb-2 w-full min-w-0">
+            <span className="uppercase text-xs font-bold tracking-wider text-white hidden md:block">Playlist</span>
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tight text-white leading-none break-words drop-shadow-lg line-clamp-2 py-2">{viewPlaylist.title}</h1>
+            <p className="text-white/70 text-sm font-medium line-clamp-2 max-w-2xl">{viewPlaylist.description}</p>
+            <div className="flex items-center flex-wrap gap-2 text-sm font-bold text-white mt-4">
+                <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded-full">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-[10px] text-white shadow-sm">
+                        {viewPlaylist.creator ? viewPlaylist.creator.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <span className="hover:underline cursor-pointer text-xs">{isMyPlaylist ? 'You' : 'Shared User'}</span>
                 </div>
-                <span className="cursor-pointer hover:underline">{isMyPlaylist ? 'You' : 'Shared User'}</span>
-                <span className="text-white/60">• {viewPlaylist.songs.length} songs</span>
+                <span className="text-white/60">•</span>
+                <span className="text-white/90">{viewPlaylist.songs.length} songs</span>
             </div>
         </div>
       </div>
 
-      {/* Control Bar */}
-      <div className="px-6 md:px-8 py-6 flex items-center gap-8 bg-gradient-to-b from-black/20 to-[#121212]">
+      {/* Action Buttons Row */}
+      <div className="px-6 md:px-10 py-6 flex items-center gap-6 bg-[#121212]/30">
          {viewPlaylist.songs.length > 0 && (
              <button 
                 onClick={() => playSong(viewPlaylist.songs[0], viewPlaylist.songs)}
-                className="bg-[#1DB954] hover:bg-[#1ed760] rounded-full p-4 hover:scale-105 transition-transform flex items-center justify-center shadow-lg group"
+                className="w-14 h-14 bg-[#1DB954] hover:bg-[#1ed760] rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.3)]"
              >
                  {isPlaying && viewPlaylist.songs.some(s => s.id === currentSong?.id) ? (
                      <Pause size={28} fill="black" className="text-black" />
@@ -185,101 +215,114 @@ export const PlaylistDetails: React.FC = () => {
                  )}
              </button>
          )}
-         {!isMyPlaylist && (
-             <button 
-                onClick={handleImport}
-                className="w-10 h-10 border border-[#727272] rounded-full flex items-center justify-center hover:border-white hover:scale-105 transition-all"
-                title="Save to Library"
-             >
-                 <Heart size={24} className="text-white" />
-             </button>
-         )}
-         <button className="text-white/60 hover:text-white transition-colors">
+         <button className="text-white/50 hover:text-white transition-colors">
              <MoreHorizontal size={32} />
          </button>
       </div>
 
       {/* Songs List */}
-      <div className="px-6 md:px-8 min-h-[200px] bg-[#121212]">
-        {viewPlaylist.songs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-white/50 border-t border-white/5">
-                <Music size={48} className="mb-4 opacity-30" />
-                <p>Playlist is empty</p>
-            </div>
-        ) : (
-            <div className="flex flex-col">
-                 <div className="grid grid-cols-[16px_1fr_auto] md:grid-cols-[16px_1fr_1fr_auto] gap-4 text-[#B3B3B3] text-sm border-b border-[#282828] pb-2 mb-2 px-4 uppercase tracking-wider font-medium sticky top-16 bg-[#121212] z-10">
-                    <span className="text-center">#</span>
-                    <span>Title</span>
-                    <span className="hidden md:block">Album</span>
-                    <div className="flex justify-end"><Clock3 size={16} /></div>
-                </div>
-                {viewPlaylist.songs.map((song, index) => {
-                    const isCurrent = currentSong?.id === song.id;
-                    return (
-                        <div 
-                            key={`${song.id}-${index}`}
-                            onClick={() => playSong(song, viewPlaylist.songs)}
-                            className={`group grid grid-cols-[16px_1fr_auto] md:grid-cols-[16px_1fr_1fr_auto] gap-4 items-center px-4 py-2 hover:bg-[#2a2a2a] rounded-md cursor-pointer transition-colors ${isCurrent ? 'bg-white/10' : ''}`}
-                        >
-                            <span className={`text-sm font-mono flex justify-center items-center ${isCurrent ? 'text-[#1DB954]' : 'text-[#B3B3B3] group-hover:text-white'}`}>
-                                <span className={`${isCurrent ? 'hidden' : 'group-hover:hidden'}`}>{index + 1}</span>
-                                <Play size={12} fill="currentColor" className={`${isCurrent ? 'hidden' : 'hidden group-hover:block'}`} />
-                                {isCurrent && <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2ef4.gif" className="h-3 w-3" alt="playing"/>}
-                            </span>
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <img src={getImageUrl(song.image)} alt="" className="w-10 h-10 rounded object-cover" />
-                                <div className="flex flex-col truncate">
-                                    <span className={`font-medium text-base truncate ${isCurrent ? 'text-[#1DB954]' : 'text-white'}`}>{song.name}</span>
-                                    <span className="text-xs text-[#B3B3B3] group-hover:text-white truncate">{song.artists?.primary?.[0]?.name || "Unknown"}</span>
-                                </div>
-                            </div>
-                            <span className="hidden md:block text-sm text-[#B3B3B3] truncate group-hover:text-white">{song.album?.name || "Single"}</span>
-                            <div className="flex justify-end text-sm font-mono text-[#B3B3B3] group-hover:text-white">
-                                {Math.floor(parseInt(song.duration) / 60)}:{(parseInt(song.duration) % 60).toString().padStart(2, '0')}
-                            </div>
-                        </div>
-                    );
-                })}
+      <div className="px-2 md:px-10 min-h-[300px] bg-[#121212]">
+        {/* List Header - Sticky below main nav */}
+        {viewPlaylist.songs.length > 0 && (
+            <div className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_1fr_auto] gap-4 text-[#B3B3B3] text-xs font-medium border-b border-[#282828] pb-2 mb-4 px-4 uppercase tracking-wider sticky top-[64px] bg-[#121212] z-40 py-3 shadow-sm">
+                <span>Title</span>
+                <span className="hidden md:block">Album</span>
+                <div className="flex justify-end"><Clock3 size={16} /></div>
             </div>
         )}
 
+        {/* Empty State */}
+        {viewPlaylist.songs.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-white/40 border-t border-white/5 mt-4">
+                <div className="w-20 h-20 bg-[#1A1A1A] rounded-full flex items-center justify-center mb-6">
+                    <Music size={40} className="opacity-50" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">It feels empty here</h3>
+                <p className="max-w-xs text-center text-sm">Find songs you love to build your perfect playlist.</p>
+            </div>
+        )}
+        
+        <div className="flex flex-col pb-10">
+            {viewPlaylist.songs.map((song, index) => {
+                const isCurrent = currentSong?.id === song.id;
+                return (
+                    <div 
+                        key={`${song.id}-${index}`}
+                        onClick={() => playSong(song, viewPlaylist.songs)}
+                        className={`group grid grid-cols-[1fr_auto] md:grid-cols-[1fr_1fr_auto] gap-4 items-center px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${isCurrent ? 'bg-white/10' : 'hover:bg-white/5'} animate-in fade-in slide-in-from-bottom-2`}
+                        style={{ animationDelay: `${index * 30}ms` }}
+                    >
+                        {/* Image & Title Column */}
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="relative shrink-0 w-10 h-10">
+                                 <img src={getImageUrl(song.image)} alt="" className="w-full h-full rounded-[4px] object-cover shadow-sm" />
+                                  {isCurrent && (
+                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-[4px]">
+                                         <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2ef4.gif" className="h-3 w-3" alt="playing"/>
+                                     </div>
+                                 )}
+                            </div>
+                            <div className="flex flex-col truncate">
+                                <span className={`font-medium text-[15px] truncate ${isCurrent ? 'text-[#1DB954]' : 'text-white'}`}>{song.name}</span>
+                                <span className="text-xs text-[#B3B3B3] group-hover:text-white truncate transition-colors">{song.artists?.primary?.[0]?.name || "Unknown"}</span>
+                            </div>
+                        </div>
+
+                        {/* Album Column */}
+                        <span className="hidden md:block text-sm text-[#B3B3B3] truncate group-hover:text-white transition-colors">{song.album?.name || "Single"}</span>
+                        
+                        {/* Duration / Actions Column */}
+                        <div className="flex items-center justify-end gap-4 min-w-[60px]">
+                            <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[#B3B3B3] hover:text-white hidden md:block">
+                                <Heart size={16} />
+                            </button>
+                            <span className="text-sm font-mono text-[#B3B3B3]">
+                                {Math.floor(parseInt(song.duration) / 60)}:{(parseInt(song.duration) % 60).toString().padStart(2, '0')}
+                            </span>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+
         {/* --- ADD SONGS SECTION (Only if user owns playlist) --- */}
         {isMyPlaylist && (
-            <div className="mt-12 mb-8 pt-8 border-t border-white/10">
-                <div className="flex flex-col gap-4">
-                    <h2 className="text-2xl font-bold text-white">Let's find something for your playlist</h2>
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                            <Search size={20} className="text-[#B3B3B3]" />
-                        </div>
+            <div className="mt-8 mb-16 border-t border-white/10 pt-8">
+                <div className="flex flex-col gap-4 mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-white">Let's find something for your playlist</h2>
+                    <div className="relative max-w-md">
+                        <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B3B3B3]" />
                         <input 
                             type="text" 
                             placeholder="Search for songs" 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full md:w-1/2 bg-[#2A2A2A] text-white pl-10 pr-4 py-3 rounded-md focus:outline-none focus:bg-[#333] transition-colors placeholder-[#B3B3B3]"
+                            className="w-full bg-[#2A2A2A] text-white pl-10 pr-10 py-3 rounded-md focus:outline-none focus:bg-[#333] focus:ring-1 focus:ring-white/20 transition-all placeholder-[#B3B3B3] text-sm font-medium"
                         />
-                        {isSearching && <div className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>}
+                        {searchQuery && (
+                            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                                 {isSearching ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div> : <div className="text-white/50 hover:text-white">✕</div>}
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                {/* Results */}
-                <div className="mt-6 flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                     {searchResults.map((song) => {
                         const isAdded = viewPlaylist.songs.some(s => s.id === song.id);
                         return (
-                            <div key={song.id} className="flex items-center justify-between p-3 hover:bg-[#2A2A2A] rounded-md group transition-colors">
+                            <div key={song.id} className="flex items-center justify-between p-3 hover:bg-[#2A2A2A] rounded-lg group transition-colors animate-in fade-in slide-in-from-bottom-2 duration-300">
                                 <div className="flex items-center gap-3 overflow-hidden">
-                                    <img src={getImageUrl(song.image)} className="w-12 h-12 object-cover rounded" alt="" />
+                                    <img src={getImageUrl(song.image)} className="w-10 h-10 object-cover rounded shadow-sm" alt="" />
                                     <div className="flex flex-col truncate">
-                                        <span className="text-white font-medium truncate">{song.name}</span>
-                                        <span className="text-[#B3B3B3] text-sm truncate">{song.artists?.primary?.[0]?.name}</span>
+                                        <span className="text-white font-medium text-sm truncate">{song.name}</span>
+                                        <span className="text-[#B3B3B3] text-xs truncate">{song.artists?.primary?.[0]?.name}</span>
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => !isAdded && handleAddSong(song)}
-                                    className={`px-4 py-1.5 rounded-full border text-sm font-bold transition-all ${isAdded ? 'border-green-500 text-green-500 cursor-default' : 'border-[#727272] text-white hover:border-white hover:scale-105'}`}
+                                    disabled={isAdded}
+                                    className={`px-4 py-1.5 rounded-full border text-xs font-bold transition-all ${isAdded ? 'border-transparent text-white/50' : 'border-[#727272] text-white hover:border-white hover:scale-105'}`}
                                 >
                                     {isAdded ? 'Added' : 'Add'}
                                 </button>
