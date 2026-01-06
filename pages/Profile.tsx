@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { uploadToCloudinary } from '../services/api';
-import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield, RotateCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const Profile: React.FC = () => {
@@ -95,12 +95,22 @@ export const Profile: React.FC = () => {
           >
             {name}
           </span>
-          <button 
-             onClick={handleLogout}
-             className="text-white/70 hover:text-white transition-colors"
-          >
-             <LogOut size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+                onClick={() => window.location.reload()}
+                className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-colors"
+                title="Restart App"
+            >
+                <RotateCcw size={16} />
+            </button>
+            <button 
+                onClick={handleLogout}
+                className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white transition-colors"
+                title="Log Out"
+            >
+                <LogOut size={16} />
+            </button>
+          </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 flex flex-col gap-8 -mt-2">
