@@ -17,6 +17,7 @@ interface PlayerState {
   volume: number;
   isShuffling: boolean;
   streamingQuality: 'low' | 'normal' | 'high';
+  musicSource: 'local' | 'youtube' | 'both';
   
   // Offline & Downloads
   isOfflineMode: boolean;
@@ -55,6 +56,7 @@ interface PlayerState {
   addSongToPlaylist: (playlistId: string, song: Song) => void;
   removePlaylist: (id: string) => void;
   setStreamingQuality: (quality: 'low' | 'normal' | 'high') => void;
+  setMusicSource: (source: 'local' | 'youtube' | 'both') => void;
   startDownload: (song: Song, url: string, filename: string) => Promise<void>;
   
   // Network Actions
@@ -93,6 +95,7 @@ export const usePlayerStore = create<PlayerState>()(
       isShuffling: false,
       currentUser: null,
       streamingQuality: 'high',
+      musicSource: 'both',
       
       // Offline State
       isOfflineMode: !navigator.onLine,
@@ -159,6 +162,7 @@ export const usePlayerStore = create<PlayerState>()(
       setQueue: (songs) => set({ queue: songs }),
       setVolume: (volume) => set({ volume }),
       setStreamingQuality: (quality) => set({ streamingQuality: quality }),
+      setMusicSource: (source) => set({ musicSource: source }),
 
       addToHistory: (song) => {
           set((state) => {
@@ -478,7 +482,8 @@ export const usePlayerStore = create<PlayerState>()(
         userPlaylists: state.userPlaylists,
         currentUser: state.currentUser,
         streamingQuality: state.streamingQuality,
-        downloadedSongIds: state.downloadedSongIds, // Persist download list
+        musicSource: state.musicSource, // Persist selection
+        downloadedSongIds: state.downloadedSongIds,
       }), 
     }
   )

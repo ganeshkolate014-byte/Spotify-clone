@@ -119,14 +119,32 @@ export const Player: React.FC = () => {
     
     const setAudioSource = async () => {
         let url = '';
+        
+        // 1. Check Offline Storage
         if (isOfflineMode || downloadedSongIds.includes(currentSong.id)) {
             const blobUrl = await getOfflineAudioUrl(currentSong.id);
             if (blobUrl) url = blobUrl;
             else if (isOfflineMode) { setIsPlaying(false); return; }
         }
-        if (!url && !isOfflineMode) {
+        
+        // 2. Check Standard Download URLs (Old API)
+        if (!url && !isOfflineMode && currentSong.downloadUrl && currentSong.downloadUrl.length > 0) {
              url = getAudioUrl(currentSong.downloadUrl, streamingQuality);
         }
+
+        // 3. Lazy Load Stream (New API)
+        if (!url && !isOfflineMode) {
+             try {
+                 setIsBuffering(true);
+                 const streamData = await api.getStreamInfo(currentSong.id);
+                 if (streamData && streamData.stream_url) {
+                     url = streamData.stream_url;
+                 }
+             } catch(e) {
+                 console.error("Failed to fetch stream", e);
+             }
+        }
+
         if (url && audioRef.current && audioRef.current.src !== url) {
             const wasPlaying = isPlaying;
             audioRef.current.src = url;
@@ -230,15 +248,23 @@ export const Player: React.FC = () => {
       setIsMoreMenuOpen(false);
       
       try {
-         // Fetch recommendations (mocked by searching artist)
-         const query = currentSong.artists.primary[0]?.name || currentSong.name;
-         const songs = await api.searchSongs(query);
-         const newSongs = songs.filter(s => s.id !== currentSong.id);
+         // Use new Recommendations API
+         const recommendations = await api.getRecommendations(currentSong.id);
          
-         if (newSongs.length > 0) {
-             // Add first 10 to queue
-             newSongs.slice(0, 10).forEach(s => addToQueue(s));
-         } 
+         if (recommendations.length > 0) {
+             // Add to queue
+             recommendations.forEach(s => addToQueue(s));
+             // Optional feedback
+             alert(`Added ${recommendations.length} recommended songs to queue.`);
+         } else {
+             // Fallback to old search method
+             const query = currentSong.artists.primary[0]?.name || currentSong.name;
+             const songs = await api.searchSongs(query);
+             const newSongs = songs.filter(s => s.id !== currentSong.id);
+             if (newSongs.length > 0) {
+                 newSongs.slice(0, 10).forEach(s => addToQueue(s));
+             }
+         }
       } catch(e) {
           console.error("Radio failed", e);
       }
@@ -496,7 +522,7 @@ export const Player: React.FC = () => {
                                                         exit={{ height: 0, opacity: 0 }}
                                                         className="border-t border-white/5 bg-[#252525]"
                                                     >
-                                                        {currentSong.downloadUrl.slice().sort((a,b) => parseInt(b.quality.replace(/\D/g, '')) - parseInt(a.quality.replace(/\D/g, ''))).map((opt) => (
+                                                        {(currentSong.downloadUrl && currentSong.downloadUrl.length > 0) ? currentSong.downloadUrl.slice().sort((a,b) => parseInt(b.quality.replace(/\D/g, '')) - parseInt(a.quality.replace(/\D/g, ''))).map((opt) => (
                                                             <button
                                                                 key={opt.quality}
                                                                 onClick={() => handleDownloadSelect(opt.url, opt.quality)}
@@ -510,7 +536,21 @@ export const Player: React.FC = () => {
                                                                 </div>
                                                                 <Download size={16} className="text-white/20 group-hover:text-white" />
                                                             </button>
-                                                        ))}
+                                                        )) : (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const info = await api.getStreamInfo(currentSong.id);
+                                                                    if(info?.stream_url) handleDownloadSelect(info.stream_url, 'Standard');
+                                                                }}
+                                                                className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors group"
+                                                            >
+                                                                <div className="flex flex-col items-start">
+                                                                    <span className="text-white font-medium text-sm">Download High Quality</span>
+                                                                    <span className="text-[10px] text-white/40 group-hover:text-white/60">Fetch & Save</span>
+                                                                </div>
+                                                                <Download size={16} className="text-white/20 group-hover:text-white" />
+                                                            </button>
+                                                        )}
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>

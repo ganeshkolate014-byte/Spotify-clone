@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { uploadToCloudinary } from '../services/api';
-import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield, RotateCcw, Youtube, Library, Globe, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const Profile: React.FC = () => {
-  const { currentUser, updateUserProfile, logoutUser, streamingQuality, setStreamingQuality, favoriteArtists } = usePlayerStore();
+  const { currentUser, updateUserProfile, logoutUser, streamingQuality, setStreamingQuality, favoriteArtists, musicSource, setMusicSource } = usePlayerStore();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -208,6 +208,40 @@ export const Profile: React.FC = () => {
                            </div>
                        )}
                        {favoriteArtists.length === 0 && <span className="text-sm font-bold text-[#1DB954]">Select Artists</span>}
+                   </div>
+              </div>
+
+               {/* Music Source Selection */}
+               <div className="bg-[#181818] p-5 rounded-lg">
+                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                      <Globe size={20} className="text-[#1DB954]"/> Music Source
+                   </h3>
+                   <div className="flex flex-col gap-2">
+                      {[
+                          { val: 'both', label: 'Hybrid (Recommended)', sub: 'Results from both sources', Icon: Layers },
+                          { val: 'youtube', label: 'YouTube Music', sub: 'Extensive library from YT', Icon: Youtube },
+                          { val: 'local', label: 'Local Library', sub: 'High quality official tracks', Icon: Library },
+                      ].map((opt) => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            onClick={() => setMusicSource(opt.val as any)}
+                            className={`flex items-center p-3 rounded-md transition-all ${
+                                musicSource === opt.val 
+                                ? 'bg-[#2A2A2A] ring-1 ring-[#1DB954]' 
+                                : 'hover:bg-[#2A2A2A]/50'
+                            }`}
+                          >
+                              <div className={`p-2 rounded-full mr-4 ${musicSource === opt.val ? 'text-[#1DB954]' : 'text-[#555]'}`}>
+                                  <opt.Icon size={20} />
+                              </div>
+                              <div className="flex flex-col items-start flex-1">
+                                  <span className={`text-sm font-bold ${musicSource === opt.val ? 'text-white' : 'text-white/70'}`}>{opt.label}</span>
+                                  <span className="text-xs text-[#555]">{opt.sub}</span>
+                              </div>
+                              {musicSource === opt.val && <div className="w-3 h-3 bg-[#1DB954] rounded-full shadow-[0_0_10px_#1DB954]"></div>}
+                          </button>
+                      ))}
                    </div>
               </div>
 

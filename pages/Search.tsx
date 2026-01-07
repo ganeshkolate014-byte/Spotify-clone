@@ -55,7 +55,7 @@ export const Search: React.FC = () => {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   
-  const { playSong, likedSongs, toggleLike } = usePlayerStore();
+  const { playSong, likedSongs, toggleLike, musicSource } = usePlayerStore();
   const navigate = useNavigate();
 
   // AbortController to handle race conditions
@@ -80,7 +80,7 @@ export const Search: React.FC = () => {
         abortControllerRef.current = new AbortController();
         try {
            const [songs, albums, artists] = await Promise.all([
-              api.searchSongs(query),
+              api.searchSongs(query, musicSource),
               api.searchAlbums(query),
               api.searchArtists(query)
            ]);
@@ -114,7 +114,7 @@ export const Search: React.FC = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, musicSource]);
 
   const clearSearch = () => {
     setQuery('');
@@ -139,165 +139,192 @@ export const Search: React.FC = () => {
       {/* Search Header */}
       <div className="sticky top-0 bg-[#121212] z-30 px-4 py-3 border-b border-white/5 transition-colors duration-300">
          <div className="flex items-center gap-3">
-             <button onClick={() => navigate(-1)} className="text-white hover:bg-white/10 p-2 rounded-full transition-colors active:scale-95 md:hidden">
-                <ArrowLeft size={24} />
+             <button onClick={() => navigate(-1)} className="md:hidden text-white/70 hover:text-white">
+                 <ArrowLeft size={24} />
              </button>
-             
-             {/* Premium Search Bar */}
-             <div className={`flex-1 relative group transition-all duration-300 ease-out ${isFocused ? 'scale-[1.01]' : 'scale-100'}`}>
-                {/* Search Icon */}
-                <div className={`absolute inset-y-0 left-3.5 flex items-center pointer-events-none transition-colors duration-300 ${isFocused ? 'text-white' : 'text-[#777]'}`}>
-                     <SearchIcon size={20} />
-                </div>
-                
-                {/* Input Field */}
-                <input 
-                  type="text"
-                  className="w-full bg-[#242424] hover:bg-[#2a2a2a] focus:bg-[#1f1f1f] text-white rounded-full py-3 pl-11 pr-11 outline-none border border-transparent focus:border-white/10 focus:shadow-[0_0_20px_rgba(255,255,255,0.03)] placeholder-[#777] font-medium text-[16px] transition-all duration-300 ease-out"
-                  placeholder="What do you want to listen to?"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
-                  autoFocus={false}
-                />
-                
-                {/* Clear / Loading Action */}
-                {(query || isLoading) && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
-                         {isLoading ? (
-                             <Loader2 size={18} className="text-[#1DB954] animate-spin" />
-                         ) : (
-                             <button onClick={clearSearch} className="text-[#777] hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors">
-                                 <X size={18} />
-                             </button>
-                         )}
-                    </div>
-                )}
+             <div className="relative flex-1">
+                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-black/50" size={20} />
+                 <input 
+                    type="text" 
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                    placeholder="What do you want to listen to?" 
+                    className="w-full bg-white text-black pl-10 pr-10 py-3 rounded-full font-medium placeholder-black/50 focus:outline-none focus:ring-2 focus:ring-white transition-all shadow-md"
+                    autoFocus
+                 />
+                 {query && (
+                     <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-black/50 hover:text-black">
+                         <X size={20} />
+                     </button>
+                 )}
              </div>
          </div>
       </div>
-      
-      {/* Browse All (Initial State) */}
-      {!query && (
-         <div className="p-4">
-             <h2 className="text-white font-bold text-lg mb-4">Browse all</h2>
-             <motion.div 
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
-             >
-                 {BROWSE_CATEGORIES.map((cat, idx) => (
-                     <motion.div 
-                        key={idx} 
-                        variants={itemVariants}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className={`${cat.color} aspect-[1.6/1] rounded-lg p-4 relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity`}
-                        onClick={() => setQuery(cat.title)} 
-                     >
-                         <h3 className="text-white font-bold text-xl md:text-2xl break-words max-w-[80%] relative z-10 leading-tight">
-                            {cat.title}
-                         </h3>
-                         <div className="absolute -bottom-2 -right-4 w-20 h-20 bg-black/20 rotate-[25deg] shadow-lg rounded-md flex items-center justify-center">
-                         </div>
-                     </motion.div>
-                 ))}
-             </motion.div>
-         </div>
-      )}
 
-      {/* Loading State Skeleton */}
-      {isLoading && !results.songs.length && (
-          <div className="flex flex-col w-full pt-2">
-              {[1,2,3,4,5].map(i => <ResultSkeleton key={i} />)}
-          </div>
-      )}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto no-scrollbar pt-4">
+          
+          {/* Default Browse Grid (When no search) */}
+          {!query && (
+              <div className="px-4 pb-8 animate-in fade-in duration-500">
+                  <h2 className="text-white font-bold text-lg mb-4">Browse all</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                      {BROWSE_CATEGORIES.map((cat, idx) => (
+                          <motion.div 
+                              key={cat.title}
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`${cat.color} h-[100px] md:h-[120px] rounded-lg p-4 relative overflow-hidden cursor-pointer shadow-lg`}
+                              onClick={() => setQuery(cat.title)}
+                          >
+                              <span className="text-white font-bold text-lg md:text-xl absolute top-4 left-4 max-w-[70%] leading-tight">{cat.title}</span>
+                              {/* Decorative rotated box */}
+                              <div className="absolute -bottom-2 -right-4 w-20 h-20 bg-white/20 rotate-[25deg] rounded-md shadow-sm transform translate-x-2 translate-y-2"></div>
+                          </motion.div>
+                      ))}
+                  </div>
+              </div>
+          )}
 
-      {/* Results */}
-      {query && (
-        <div className="flex flex-col w-full pb-8">
-            
-            {/* 1. Related Keywords (Suggestions) */}
-            {suggestions.length > 0 && (
-                <div className="flex flex-col mb-2">
-                    {suggestions.map((suggestion, idx) => (
-                        <div 
-                            key={idx}
-                            onClick={() => setQuery(suggestion)}
-                            className="flex items-center justify-between px-4 py-3.5 hover:bg-[#1A1A1A] active:bg-[#222] cursor-pointer transition-colors border-b border-white/5 last:border-0"
-                        >
-                            <div className="flex items-center gap-4">
-                                <SearchIcon size={20} className="text-[#B3B3B3]" />
-                                <span className="text-white text-[15px]">{suggestion}</span>
-                            </div>
-                            <ArrowUpLeft size={18} className="text-[#555] rotate-45" />
-                        </div>
-                    ))}
-                </div>
-            )}
+          {/* Search Suggestions (When typing but not loading results yet) */}
+          {query && !isLoading && results.songs.length === 0 && results.artists.length === 0 && (
+              <div className="px-4 text-center py-20 text-[#777]">
+                  <p>No results found for "{query}"</p>
+              </div>
+          )}
 
-            {/* 2. Songs List */}
-            {results.songs.length > 0 && (
-                <div className="animate-in fade-in slide-in-from-bottom-3 duration-300 delay-75">
-                     {/* REMOVED SLICE TO SHOW ALL SONGS */}
-                     {results.songs.map((song) => {
-                         const isLiked = likedSongs.some(s => s.id === song.id);
-                         const artistName = song.artists?.primary?.[0]?.name || "Unknown";
-                         
-                         return (
-                             <div 
-                                key={song.id} 
-                                className="flex items-center gap-3 px-4 py-2 hover:bg-[#1A1A1A] cursor-pointer group transition-colors" 
-                                onClick={() => playSong(song, results.songs)}
-                             >
-                                 <div className="w-12 h-12 shrink-0 relative">
-                                    <img src={getImageUrl(song.image)} className="w-full h-full rounded-[4px] object-cover" alt="" />
-                                 </div>
-                                 <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-                                     <div className={`font-medium truncate text-[16px] text-white ${isLiked ? 'text-[#1DB954]' : ''}`}>{song.name}</div>
-                                     <div className="text-[#B3B3B3] text-sm truncate flex items-center gap-1">
-                                        {song.name.toLowerCase().includes('explicit') && (
-                                            <span className="bg-[#B3B3B3] text-black text-[9px] px-1 rounded-[2px] font-bold">E</span>
-                                        )}
-                                        <span>Song • {artistName}</span>
-                                     </div>
-                                 </div>
-                                 
-                                 <div className="flex items-center gap-4">
-                                     <button 
-                                        className="text-[#B3B3B3] hover:text-white transition-transform active:scale-90" 
-                                        onClick={(e) => { e.stopPropagation(); toggleLike(song); }}
-                                     >
-                                        {isLiked ? (
-                                            <CheckCircle2 size={22} className="text-[#1DB954] fill-[#1DB954] text-black" />
-                                        ) : (
-                                            <PlusCircle size={22} />
-                                        )}
-                                     </button>
-                                     <button className="text-[#B3B3B3] hover:text-white" onClick={(e) => e.stopPropagation()}>
-                                         <MoreVertical size={20} />
-                                     </button>
-                                 </div>
-                             </div>
-                         );
-                     })}
-                </div>
-            )}
-            
-            {/* No Results */}
-            {!isLoading && results.songs.length === 0 && suggestions.length === 0 && (
-                <div className="flex flex-col items-center justify-center pt-20 text-[#777]">
-                    <div className="w-20 h-20 bg-[#1A1A1A] rounded-full flex items-center justify-center mb-4">
-                        <SearchIcon size={40} className="opacity-50"/>
-                    </div>
-                    <h3 className="text-white font-bold text-lg">No results found</h3>
-                    <p className="text-sm mt-2">Try searching for a different song or artist.</p>
-                </div>
-            )}
-        </div>
-      )}
+          {/* Loading Skeletons */}
+          {isLoading && (
+              <div className="flex flex-col gap-2 pt-2">
+                  <ResultSkeleton />
+                  <ResultSkeleton />
+                  <ResultSkeleton />
+                  <ResultSkeleton />
+                  <ResultSkeleton />
+              </div>
+          )}
+
+          {/* Results List */}
+          {(results.songs.length > 0 || results.artists.length > 0 || results.albums.length > 0) && (
+              <motion.div 
+                 variants={containerVariants}
+                 initial="hidden"
+                 animate="visible"
+                 className="flex flex-col gap-8 pb-8"
+              >
+                  {/* Top Result (Best Match) */}
+                  {results.artists.length > 0 && (
+                      <div className="px-4">
+                          <h2 className="text-white font-bold text-lg mb-4">Top Result</h2>
+                          <motion.div 
+                              variants={itemVariants}
+                              onClick={() => navigate(`/artist/${results.artists[0].id}`, { state: { artist: results.artists[0] } })}
+                              className="bg-[#181818] hover:bg-[#282828] p-5 rounded-xl flex flex-col items-start gap-4 transition-colors cursor-pointer group shadow-lg border border-white/5"
+                          >
+                              <img src={getImageUrl(results.artists[0].image)} className="w-24 h-24 rounded-full shadow-lg object-cover group-hover:scale-105 transition-transform" alt=""/>
+                              <div className="flex flex-col gap-1">
+                                  <h3 className="text-white font-bold text-2xl md:text-3xl">{results.artists[0].name}</h3>
+                                  <div className="flex items-center gap-2">
+                                      <span className="bg-[#121212] text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Artist</span>
+                                  </div>
+                              </div>
+                          </motion.div>
+                      </div>
+                  )}
+
+                  {/* Songs Section */}
+                  {results.songs.length > 0 && (
+                      <div className="px-4">
+                          <h2 className="text-white font-bold text-lg mb-2">Songs</h2>
+                          <div className="flex flex-col">
+                              {results.songs.map((song, i) => {
+                                  const isLiked = likedSongs.some(s => s.id === song.id);
+                                  return (
+                                    <motion.div 
+                                        key={song.id} 
+                                        variants={itemVariants}
+                                        onClick={() => playSong(song, results.songs)}
+                                        className="group flex items-center gap-3 p-2 rounded-md hover:bg-[#2A2A2A] cursor-pointer transition-colors"
+                                    >
+                                        <div className="relative w-12 h-12 shrink-0">
+                                            <img src={getImageUrl(song.image)} alt={song.name} className="w-full h-full object-cover rounded shadow-sm group-hover:opacity-60 transition-opacity" />
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Play size={20} fill="white" className="text-white" />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={`font-medium truncate ${isLiked ? 'text-[#1DB954]' : 'text-white'}`}>{song.name}</span>
+                                            <span className="text-sm text-[#B3B3B3] truncate">{song.artists.primary[0]?.name}</span>
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); toggleLike(song); }}
+                                            className="p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            {isLiked ? <CheckCircle2 size={20} className="text-[#1DB954]" /> : <PlusCircle size={20} className="text-[#B3B3B3] hover:text-white" />}
+                                        </button>
+                                        <div className="text-xs text-[#B3B3B3] font-mono w-10 text-right">
+                                            {(parseInt(song.duration) / 60).toFixed(0)}:{(parseInt(song.duration) % 60).toString().padStart(2, '0')}
+                                        </div>
+                                    </motion.div>
+                                  );
+                              })}
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Artists Section */}
+                  {results.artists.length > 0 && (
+                       <div className="px-4">
+                           <h2 className="text-white font-bold text-lg mb-4">Artists</h2>
+                           <div className="flex overflow-x-auto gap-4 no-scrollbar pb-4">
+                               {results.artists.map(artist => (
+                                   <motion.div 
+                                       key={artist.id}
+                                       variants={itemVariants}
+                                       onClick={() => navigate(`/artist/${artist.id}`, { state: { artist } })}
+                                       className="flex flex-col items-center gap-2 w-[120px] shrink-0 cursor-pointer group"
+                                   >
+                                       <div className="w-[120px] h-[120px] rounded-full overflow-hidden shadow-lg">
+                                           <img src={getImageUrl(artist.image)} alt={artist.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                       </div>
+                                       <span className="text-white font-bold text-center text-sm truncate w-full group-hover:underline">{artist.name}</span>
+                                       <span className="text-[#B3B3B3] text-xs">Artist</span>
+                                   </motion.div>
+                               ))}
+                           </div>
+                       </div>
+                  )}
+
+                  {/* Albums Section */}
+                  {results.albums.length > 0 && (
+                       <div className="px-4">
+                           <h2 className="text-white font-bold text-lg mb-4">Albums</h2>
+                           <div className="flex overflow-x-auto gap-4 no-scrollbar pb-4">
+                               {results.albums.map(album => (
+                                   <motion.div 
+                                       key={album.id}
+                                       variants={itemVariants}
+                                       onClick={() => navigate(`/album/${album.id}`)}
+                                       className="flex flex-col gap-2 w-[140px] shrink-0 cursor-pointer group"
+                                   >
+                                       <div className="w-[140px] h-[140px] rounded-md overflow-hidden shadow-lg relative">
+                                           <img src={getImageUrl(album.image)} alt={album.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                       </div>
+                                       <div className="flex flex-col">
+                                            <span className="text-white font-bold text-sm truncate w-full group-hover:underline">{album.name}</span>
+                                            <span className="text-[#B3B3B3] text-xs truncate">{album.year} • Album</span>
+                                       </div>
+                                   </motion.div>
+                               ))}
+                           </div>
+                       </div>
+                  )}
+
+              </motion.div>
+          )}
+      </div>
     </div>
   );
 };

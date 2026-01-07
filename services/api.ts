@@ -1,6 +1,7 @@
 import { Song, Album, Artist, Playlist } from '../types';
 
 const BASE_URL = 'https://musicapi-gray.vercel.app/api';
+const YT_BASE_URL = 'https://yt-music-backend-qww6.onrender.com';
 
 // --- OFFLINE STORAGE (IndexedDB) ---
 const DB_NAME = 'vibestream_offline_db';
@@ -152,7 +153,18 @@ export const getOfflineAudioUrl = async (songId: string): Promise<string | null>
 
 export const downloadSong = async (song: Song) => {
     // This is the quick download fallback, redirecting to the robust one
-    const url = getAudioUrl(song.downloadUrl, 'high');
+    let url = getAudioUrl(song.downloadUrl, 'high');
+    
+    // If no static URL, verify if it's a new API song and try to fetch stream
+    if (!url && song.downloadUrl.length === 0) {
+         try {
+             const streamData = await api.getStreamInfo(song.id);
+             if (streamData?.stream_url) url = streamData.stream_url;
+         } catch(e) { console.error(e); }
+    }
+
+    if (!url) return;
+
     const filename = `${song.name} - ${song.artists.primary[0]?.name || 'Artist'}.mp3`;
     // We mock the progress for the simple call
     await downloadSongWithProgress(song.id, url, filename, () => {});
@@ -195,15 +207,120 @@ async function fetchJson<T>(endpoint: string): Promise<T> {
   return json;
 }
 
-export const api = {
-  searchSongs: async (query: string): Promise<Song[]> => {
-    try {
-      const data = await fetchJson<{ data: { results: Song[] } }>(`/search/songs?query=${encodeURIComponent(query)}`);
-      return data.data.results || [];
-    } catch (e) {
-      console.error("Search songs error", e);
-      return [];
+// Parse "MM:SS" to seconds string
+const parseDuration = (durationStr: string): string => {
+    if (!durationStr) return "0";
+    if (typeof durationStr !== 'string') return "0";
+    
+    const parts = durationStr.split(':');
+    let seconds = 0;
+    if (parts.length === 2) {
+        seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    } else if (parts.length === 3) {
+        seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+    } else {
+        return durationStr; // Assume already seconds if no colons
     }
+    return seconds.toString();
+};
+
+export const api = {
+  // New API: Get Real Stream URL
+  getStreamInfo: async (id: string) => {
+    try {
+        const res = await fetch(`${YT_BASE_URL}/play/${id}`);
+        return await res.json();
+    } catch(e) { return null; }
+  },
+
+  // New API: Get Recommendations
+  getRecommendations: async (id: string): Promise<Song[]> => {
+      try {
+          const res = await fetch(`${YT_BASE_URL}/recommend/${id}`);
+          const data = await res.json();
+          // Map to Song interface
+          return data.map((item: any) => ({
+             id: item.id,
+             name: item.title,
+             type: 'song',
+             album: { id: item.id, name: 'Single', url: '' },
+             year: new Date().getFullYear().toString(),
+             duration: parseDuration(item.duration),
+             language: 'Unknown',
+             genre: 'Unknown',
+             image: item.image ? [{ quality: 'high', url: item.image }] : [],
+             artists: {
+                primary: [{ id: 'yt', name: item.subtitle, role: 'Artist', image: [] }],
+                featured: [],
+                all: []
+             },
+             downloadUrl: [] 
+          }));
+      } catch(e) { return []; }
+  },
+
+  searchSongs: async (query: string, source: 'local' | 'youtube' | 'both' = 'both'): Promise<Song[]> => {
+    const promises = [];
+    let ytIndex = -1;
+    let localIndex = -1;
+
+    // Fetch YT if selected
+    if (source === 'youtube' || source === 'both') {
+        promises.push(fetch(`${YT_BASE_URL}/search/${query}/1`).then(r => r.json()));
+        ytIndex = promises.length - 1;
+    }
+
+    // Fetch Local if selected
+    if (source === 'local' || source === 'both') {
+        promises.push(fetchJson<{ data: { results: Song[] } }>(`/search/songs?query=${encodeURIComponent(query)}`).then(d => d.data.results));
+        localIndex = promises.length - 1;
+    }
+
+    const results = await Promise.allSettled(promises);
+    let finalResults: Song[] = [];
+
+    // Process YT Results
+    if (ytIndex !== -1) {
+        const ytRes = results[ytIndex];
+        if (ytRes.status === 'fulfilled' && Array.isArray(ytRes.value)) {
+            const mapped = ytRes.value.map((item: any) => ({
+                 id: item.id,
+                 name: item.title,
+                 type: 'song' as const,
+                 album: { id: item.id, name: 'Single', url: '' },
+                 year: '2024',
+                 duration: parseDuration(item.duration),
+                 language: 'Unknown',
+                 genre: 'Unknown',
+                 image: [{ quality: 'high', url: item.image }],
+                 artists: {
+                    primary: [{ id: 'yt', name: item.subtitle, role: 'Artist', image: [] }],
+                    featured: [],
+                    all: []
+                 },
+                 downloadUrl: [] // Signals Player to lazy-load stream
+            }));
+            finalResults = [...finalResults, ...mapped];
+        }
+    }
+
+    // Process Local Results
+    if (localIndex !== -1) {
+        const localRes = results[localIndex];
+        if (localRes.status === 'fulfilled' && localRes.value) {
+            finalResults = [...finalResults, ...localRes.value];
+        }
+    }
+
+    // Deduplicate by ID
+    const uniqueMap = new Map();
+    finalResults.forEach(item => {
+        if(!uniqueMap.has(item.id)){
+            uniqueMap.set(item.id, item);
+        }
+    });
+    
+    return Array.from(uniqueMap.values());
   },
 
   searchAlbums: async (query: string): Promise<Album[]> => {
