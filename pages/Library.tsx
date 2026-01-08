@@ -4,6 +4,31 @@ import { Search, Plus, ArrowUpDown, Pin, Heart, Music, UserCircle, Sparkles, Che
 import { getImageUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
+import { motion } from 'framer-motion';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: { 
+    opacity: 1, 
+    x: 0,
+    transition: {
+        type: "spring",
+        stiffness: 260,
+        damping: 20
+    }
+  }
+};
 
 export const Library: React.FC = () => {
   const { likedSongs, userPlaylists, currentUser, isOfflineMode, downloadedSongIds } = usePlayerStore();
@@ -12,13 +37,8 @@ export const Library: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Filter Logic
-  // For playlists, we assume user created playlists *might* have some downloaded songs.
-  // In a real app, we'd check if the playlist is fully downloaded, but for this demo,
-  // we just show the playlists. The song check happens inside the playlist view.
   const filteredPlaylists = userPlaylists.filter(() => {
      if (isOfflineMode || filter === 'Downloaded') {
-         // Only show playlists that are owned by user or specifically marked (simplification)
-         // Or just show all playlists and let user find downloaded songs inside
          return true; 
      }
      return true;
@@ -27,12 +47,14 @@ export const Library: React.FC = () => {
   const downloadedLikedSongsCount = likedSongs.filter(s => downloadedSongIds.includes(s.id)).length;
   
   const FilterChip = ({ label }: { label: string }) => (
-      <button 
+      <motion.button 
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={() => setFilter(label as any)}
-        className={`px-4 py-1.5 rounded-full text-xs font-medium border border-transparent transition-colors ${filter === label ? 'bg-[#1DB954] text-black' : 'bg-[#2A2A2A] text-white hover:bg-[#3E3E3E] active:scale-95'}`}
+        className={`px-4 py-1.5 rounded-full text-xs font-medium border border-transparent transition-colors ${filter === label ? 'bg-[#1DB954] text-black' : 'bg-[#2A2A2A] text-white hover:bg-[#3E3E3E]'}`}
       >
           {label}
-      </button>
+      </motion.button>
   );
 
   const handleProfileClick = () => {
@@ -49,16 +71,18 @@ export const Library: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-4 sticky top-0 bg-[#121212] z-20 py-2">
           <div className="flex items-center gap-3">
-              <div 
+              <motion.div 
+                 whileHover={{ scale: 1.1 }}
+                 whileTap={{ scale: 0.9 }}
                  onClick={handleProfileClick}
-                 className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center font-bold text-black text-xs cursor-pointer hover:scale-105 transition-transform overflow-hidden"
+                 className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center font-bold text-black text-xs cursor-pointer overflow-hidden"
               >
                   {currentUser && currentUser.image ? (
                      <img src={currentUser.image} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                      <span className="font-bold">{currentUser ? currentUser.name.charAt(0).toUpperCase() : <UserCircle size={20} />}</span>
                   )}
-              </div>
+              </motion.div>
               <h1 className="text-2xl font-bold text-white">Your Library</h1>
           </div>
           <div className="flex items-center gap-4 text-white">
@@ -70,13 +94,17 @@ export const Library: React.FC = () => {
 
       {/* Offline Banner in Library */}
       {isOfflineMode && (
-         <div className="mb-4 bg-[#2A2A2A] rounded-lg p-3 flex items-center gap-3 animate-in fade-in">
+         <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 bg-[#2A2A2A] rounded-lg p-3 flex items-center gap-3"
+         >
              <div className="bg-[#333] p-2 rounded-full"><WifiOff size={16} /></div>
              <div className="flex flex-col">
                  <span className="text-sm font-bold text-white">You're offline</span>
                  <span className="text-xs text-[#B3B3B3]">Showing only downloaded music.</span>
              </div>
-         </div>
+         </motion.div>
       )}
 
       {/* Filters */}
@@ -104,11 +132,17 @@ export const Library: React.FC = () => {
       </div>
 
       {/* List Content */}
-      <div className="flex flex-col gap-2">
+      <motion.div 
+        className="flex flex-col gap-2"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
           
           {/* Liked Songs Pin */}
           {(!isOfflineMode || downloadedLikedSongsCount > 0) && (
-              <div 
+              <motion.div 
+                variants={itemVariants}
                 onClick={() => navigate('/liked')}
                 className="flex items-center gap-3 p-2 -mx-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer active:scale-[0.99] transition-all group"
               >
@@ -123,13 +157,14 @@ export const Library: React.FC = () => {
                            {isOfflineMode && <CheckCircle2 size={12} className="text-[#1DB954]" />}
                       </div>
                   </div>
-              </div>
+              </motion.div>
           )}
 
           {/* User Playlists */}
           {filteredPlaylists.map(playlist => (
-             <div 
+             <motion.div 
                 key={playlist.id}
+                variants={itemVariants}
                 onClick={() => navigate(`/playlist/${playlist.id}`)}
                 className="flex items-center gap-3 p-2 -mx-2 hover:bg-[#1A1A1A] rounded-md cursor-pointer active:scale-[0.99] transition-all group"
              >
@@ -149,7 +184,7 @@ export const Library: React.FC = () => {
                         {isOfflineMode && <CheckCircle2 size={12} className="text-[#1DB954]" />}
                     </div>
                 </div>
-             </div>
+             </motion.div>
           ))}
 
           {isOfflineMode && filteredPlaylists.length === 0 && downloadedLikedSongsCount === 0 && (
@@ -160,7 +195,7 @@ export const Library: React.FC = () => {
               </div>
           )}
 
-      </div>
+      </motion.div>
 
       {isModalOpen && <CreatePlaylistModal onClose={() => setIsModalOpen(false)} />}
     </div>

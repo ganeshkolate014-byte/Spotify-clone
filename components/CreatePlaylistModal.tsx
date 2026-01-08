@@ -3,6 +3,7 @@ import { X, Upload, Loader2, Music, Sparkles, Search, Plus } from 'lucide-react'
 import { uploadToCloudinary, api, getImageUrl } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { UserPlaylist, Song } from '../types';
+import { motion } from 'framer-motion';
 
 interface CreatePlaylistModalProps {
   onClose: () => void;
@@ -108,8 +109,12 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({ onClos
 
   return (
     <div className="fixed inset-0 z-[250] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-md">
-      <div 
-        className="bg-[#121212] w-full max-w-lg rounded-t-2xl md:rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[95dvh] transition-transform animate-in slide-in-from-bottom duration-300"
+      <motion.div 
+        initial={{ y: 50, opacity: 0, scale: 0.95 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 50, opacity: 0, scale: 0.95 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="bg-[#121212] w-full max-w-lg rounded-t-2xl md:rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]"
       >
         
         {/* Header */}
@@ -251,7 +256,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({ onClos
 
             </form>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

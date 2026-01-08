@@ -4,6 +4,22 @@ import { api, getImageUrl } from '../services/api';
 import { Artist, Song, Album } from '../types';
 import { usePlayerStore } from '../store/playerStore';
 import { Play, Pause, CheckCircle2, PlusCircle, ArrowLeft, MoreHorizontal, Disc } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: { opacity: 1, x: 0 }
+};
 
 export const ArtistDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -106,24 +122,49 @@ export const ArtistDetails: React.FC = () => {
         {/* Hero Image */}
         <div className="relative w-full h-[350px] md:h-[450px] -mt-[64px] z-0">
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-[#121212] z-10"></div>
-            <img 
+            <motion.img 
+                initial={{ scale: 1.1 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 1 }}
                 src={imageUrl} 
                 alt={artist.name} 
                 className="w-full h-full object-cover object-center" 
             />
             <div className="absolute bottom-0 left-0 p-6 z-20 w-full">
-                 <div className="flex items-center gap-2 mb-2">
+                 <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex items-center gap-2 mb-2"
+                 >
                      <CheckCircle2 size={24} className="text-[#3d91f4] fill-white bg-white rounded-full border-none" />
                      <span className="text-sm font-medium tracking-wide">Verified Artist</span>
-                 </div>
-                 <h1 className="text-5xl md:text-7xl font-black text-white drop-shadow-xl">{artist.name}</h1>
-                 <p className="text-white/80 mt-2 font-medium">10,230,129 monthly listeners</p>
+                 </motion.div>
+                 <motion.h1 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="text-5xl md:text-7xl font-black text-white drop-shadow-xl"
+                >
+                    {artist.name}
+                 </motion.h1>
+                 <motion.p 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.8 }}
+                    transition={{ delay: 0.4 }}
+                    className="text-white/80 mt-2 font-medium"
+                 >
+                    10,230,129 monthly listeners
+                 </motion.p>
             </div>
         </div>
 
         {/* Action Buttons */}
         <div className="px-4 py-6 flex items-center gap-4 bg-[#121212] relative z-20">
-             <button 
+             <motion.button 
+                 initial={{ scale: 0 }}
+                 animate={{ scale: 1 }}
+                 transition={{ type: "spring", delay: 0.5 }}
                  onClick={() => songs.length > 0 && playSong(songs[0], songs)}
                  className="w-14 h-14 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
              >
@@ -132,7 +173,7 @@ export const ArtistDetails: React.FC = () => {
                  ) : (
                      <Play size={28} fill="black" className="text-black ml-1" />
                  )}
-             </button>
+             </motion.button>
              <button className="px-5 py-2 rounded-full border border-white/40 text-sm font-bold hover:border-white transition-colors">
                  Follow
              </button>
@@ -141,7 +182,12 @@ export const ArtistDetails: React.FC = () => {
         {/* Popular Songs */}
         <div className="px-4 pb-8 bg-[#121212] relative z-20">
             <h2 className="text-xl font-bold mb-4">Popular</h2>
-            <div className="flex flex-col">
+            <motion.div 
+                className="flex flex-col"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+            >
                 {songs.length === 0 ? (
                     <div className="text-secondary italic">No songs found.</div>
                 ) : (
@@ -150,8 +196,9 @@ export const ArtistDetails: React.FC = () => {
                         const isSongLiked = likedSongs.some(s => s.id === song.id);
 
                         return (
-                            <div 
+                            <motion.div 
                                 key={song.id}
+                                variants={itemVariants}
                                 onClick={() => playSong(song, songs)}
                                 className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-colors ${isCurrent ? 'bg-white/10' : 'hover:bg-white/5'}`}
                             >
@@ -183,11 +230,11 @@ export const ArtistDetails: React.FC = () => {
                                 >
                                     {isSongLiked ? <CheckCircle2 size={18} /> : <PlusCircle size={18} />}
                                 </button>
-                            </div>
+                            </motion.div>
                         );
                     })
                 )}
-            </div>
+            </motion.div>
         </div>
 
         {/* Albums Section */}
@@ -196,8 +243,9 @@ export const ArtistDetails: React.FC = () => {
                 <h2 className="text-xl font-bold mb-4">Discography</h2>
                 <div className="flex overflow-x-auto gap-4 no-scrollbar pb-2">
                     {albums.map((album) => (
-                        <div 
+                        <motion.div 
                             key={album.id} 
+                            whileHover={{ y: -5 }}
                             className="w-[150px] shrink-0 cursor-pointer group"
                             onClick={() => navigate(`/album/${album.id}`)}
                         >
@@ -206,7 +254,7 @@ export const ArtistDetails: React.FC = () => {
                             </div>
                             <h3 className="text-sm font-bold text-white truncate group-hover:underline">{album.name}</h3>
                             <p className="text-xs text-[#B3B3B3]">{album.year} • Album</p>
-                        </div>
+                        </motion.div>
                     ))}
                 </div>
             </div>

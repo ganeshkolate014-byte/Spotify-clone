@@ -5,6 +5,11 @@ import { usePlayerStore } from '../store/playerStore';
 import { getImageUrl } from '../services/api';
 import { motion } from 'framer-motion';
 
+const itemVariants = {
+  hidden: { opacity: 0, x: -10 },
+  visible: { opacity: 1, x: 0 }
+};
+
 export const Sidebar: React.FC = () => {
   const activeClass = "text-white";
   const baseClass = "flex items-center gap-5 px-6 py-3 text-[#B3B3B3] hover:text-white font-bold transition-colors";
@@ -80,9 +85,17 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Library Items */}
-        <div className="flex-1 overflow-y-auto hover:overflow-y-scroll px-2 mt-2">
+        <motion.div 
+            className="flex-1 overflow-y-auto hover:overflow-y-scroll px-2 mt-2"
+            initial="hidden"
+            animate="visible"
+            variants={{
+                visible: { transition: { staggerChildren: 0.05 } }
+            }}
+        >
             {/* Liked Songs */}
             <motion.div 
+                variants={itemVariants}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/liked')}
@@ -104,6 +117,7 @@ export const Sidebar: React.FC = () => {
              {userPlaylists.map((playlist) => (
                  <motion.div 
                     key={playlist.id} 
+                    variants={itemVariants}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => navigate(`/playlist/${playlist.id}`)}
@@ -122,7 +136,7 @@ export const Sidebar: React.FC = () => {
                     </div>
                 </motion.div>
              ))}
-        </div>
+        </motion.div>
         
         {/* User / Login Section */}
         <div className="p-4 border-t border-[#282828] mt-auto">
