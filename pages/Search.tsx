@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, ArrowLeft, X, Loader2, Play, CheckCircle2, PlusCircle, ArrowUpLeft, MoreVertical } from 'lucide-react';
+import { Search as SearchIcon, ArrowLeft, X, Play, CheckCircle2, PlusCircle } from 'lucide-react';
 import { api, getImageUrl } from '../services/api';
-import { Song, Album, Artist } from '../types';
+import { Song, Album, Artist, SearchResult } from '../types';
 import { usePlayerStore } from '../store/playerStore';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -52,8 +52,6 @@ export const Search: React.FC = () => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ songs: Song[], albums: Album[], artists: Artist[] }>({ songs: [], albums: [], artists: [] });
   const [isLoading, setIsLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [isFocused, setIsFocused] = useState(false);
   
   const { playSong, likedSongs, toggleLike, musicSource } = usePlayerStore();
   const navigate = useNavigate();
@@ -69,7 +67,6 @@ export const Search: React.FC = () => {
 
     if (!query.trim()) {
         setResults({ songs: [], albums: [], artists: [] });
-        setSuggestions([]);
         setIsLoading(false);
         return;
     }
@@ -88,19 +85,6 @@ export const Search: React.FC = () => {
            // Only update if not aborted
            if (!abortControllerRef.current?.signal.aborted) {
                setResults({ songs, albums, artists });
-               
-               // Generate Related Keywords from results
-               const rawTitles = songs.map(s => s.name.toLowerCase());
-               const artistNames = artists.slice(0, 2).map(a => a.name.toLowerCase());
-               
-               const derivedSuggestions = Array.from(new Set([
-                   query.toLowerCase(), 
-                   ...rawTitles.filter(t => t.includes(query.toLowerCase()) && t !== query.toLowerCase()),
-                   ...artistNames,
-                   ...rawTitles
-               ])).slice(0, 4); 
-
-               setSuggestions(derivedSuggestions);
            }
         } catch (e: any) {
             if (e.name !== 'AbortError') {
@@ -119,8 +103,23 @@ export const Search: React.FC = () => {
   const clearSearch = () => {
     setQuery('');
     setResults({ songs: [], albums: [], artists: [] });
-    setSuggestions([]);
     setIsLoading(false);
+  };
+
+  const handleResultClick = (item: SearchResult) => {
+      if (item.type === 'artist') {
+          navigate(`/artist/${item.id}`, { state: { artist: item } });
+      } else if (item.type === 'album') {
+          navigate(`/album/${item.id}`);
+      } else if (item.type === 'song') {
+          playSong(item as Song, results.songs.length > 0 ? results.songs : [item as Song]);
+      }
+  };
+
+  const handleKeywordSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && query.trim()) {
+          (e.target as HTMLInputElement).blur();
+      }
   };
 
   const ResultSkeleton = () => (
@@ -143,19 +142,18 @@ export const Search: React.FC = () => {
                  <ArrowLeft size={24} />
              </button>
              <div className="relative flex-1">
-                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-black/50" size={20} />
+                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B3B3B3]" size={20} />
                  <input 
                     type="text" 
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                    onKeyDown={handleKeywordSearch}
                     placeholder="What do you want to listen to?" 
-                    className="w-full bg-white text-black pl-10 pr-10 py-3 rounded-full font-medium placeholder-black/50 focus:outline-none focus:ring-2 focus:ring-white transition-all shadow-md"
-                    autoFocus
+                    className="w-full bg-[#242424] text-white pl-10 pr-10 py-3 rounded-full font-medium placeholder-[#777] focus:outline-none focus:ring-2 focus:ring-white transition-all shadow-md"
+                    autoFocus={false}
                  />
                  {query && (
-                     <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-black/50 hover:text-black">
+                     <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#B3B3B3] hover:text-white">
                          <X size={20} />
                      </button>
                  )}
@@ -166,7 +164,7 @@ export const Search: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar pt-4">
           
-          {/* Default Browse Grid (When no search) */}
+          {/* VIEW 1: Browse Categories (Only when no query) */}
           {!query && (
               <div className="px-4 pb-8 animate-in fade-in duration-500">
                   <h2 className="text-white font-bold text-lg mb-4">Browse all</h2>
@@ -188,14 +186,14 @@ export const Search: React.FC = () => {
               </div>
           )}
 
-          {/* Search Suggestions (When typing but not loading results yet) */}
+          {/* VIEW 2: No Results State */}
           {query && !isLoading && results.songs.length === 0 && results.artists.length === 0 && (
               <div className="px-4 text-center py-20 text-[#777]">
                   <p>No results found for "{query}"</p>
               </div>
           )}
 
-          {/* Loading Skeletons */}
+          {/* VIEW 3: Loading Skeletons */}
           {isLoading && (
               <div className="flex flex-col gap-2 pt-2">
                   <ResultSkeleton />
@@ -206,7 +204,7 @@ export const Search: React.FC = () => {
               </div>
           )}
 
-          {/* Results List */}
+          {/* VIEW 4: Search Results List */}
           {(results.songs.length > 0 || results.artists.length > 0 || results.albums.length > 0) && (
               <motion.div 
                  variants={containerVariants}
@@ -220,7 +218,7 @@ export const Search: React.FC = () => {
                           <h2 className="text-white font-bold text-lg mb-4">Top Result</h2>
                           <motion.div 
                               variants={itemVariants}
-                              onClick={() => navigate(`/artist/${results.artists[0].id}`, { state: { artist: results.artists[0] } })}
+                              onClick={() => handleResultClick(results.artists[0])}
                               className="bg-[#181818] hover:bg-[#282828] p-5 rounded-xl flex flex-col items-start gap-4 transition-colors cursor-pointer group shadow-lg border border-white/5"
                           >
                               <img src={getImageUrl(results.artists[0].image)} className="w-24 h-24 rounded-full shadow-lg object-cover group-hover:scale-105 transition-transform" alt=""/>
@@ -245,7 +243,7 @@ export const Search: React.FC = () => {
                                     <motion.div 
                                         key={song.id} 
                                         variants={itemVariants}
-                                        onClick={() => playSong(song, results.songs)}
+                                        onClick={() => handleResultClick(song)}
                                         className="group flex items-center gap-3 p-2 rounded-md hover:bg-[#2A2A2A] cursor-pointer transition-colors"
                                     >
                                         <div className="relative w-12 h-12 shrink-0">
@@ -283,7 +281,7 @@ export const Search: React.FC = () => {
                                    <motion.div 
                                        key={artist.id}
                                        variants={itemVariants}
-                                       onClick={() => navigate(`/artist/${artist.id}`, { state: { artist } })}
+                                       onClick={() => handleResultClick(artist)}
                                        className="flex flex-col items-center gap-2 w-[120px] shrink-0 cursor-pointer group"
                                    >
                                        <div className="w-[120px] h-[120px] rounded-full overflow-hidden shadow-lg">
@@ -306,7 +304,7 @@ export const Search: React.FC = () => {
                                    <motion.div 
                                        key={album.id}
                                        variants={itemVariants}
-                                       onClick={() => navigate(`/album/${album.id}`)}
+                                       onClick={() => handleResultClick(album)}
                                        className="flex flex-col gap-2 w-[140px] shrink-0 cursor-pointer group"
                                    >
                                        <div className="w-[140px] h-[140px] rounded-md overflow-hidden shadow-lg relative">

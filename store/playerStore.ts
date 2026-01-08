@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession, Artist } from '../types';
+import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession, Artist, SearchResult } from '../types';
 import { authService } from '../services/auth';
 import { downloadSongWithProgress, OfflineStorage } from '../services/api';
 
@@ -19,6 +19,9 @@ interface PlayerState {
   streamingQuality: 'low' | 'normal' | 'high';
   musicSource: 'local' | 'youtube' | 'both';
   
+  // Search History
+  recentSearches: (SearchResult | string)[];
+
   // Audio Engine State
   audioElement: HTMLAudioElement | null;
   duration: number;
@@ -65,6 +68,11 @@ interface PlayerState {
   setMusicSource: (source: 'local' | 'youtube' | 'both') => void;
   startDownload: (song: Song, url: string, filename: string) => Promise<void>;
   
+  // Search History Actions
+  addRecentSearch: (item: SearchResult | string) => void;
+  removeRecentSearch: (id: string) => void;
+  clearRecentSearches: () => void;
+
   // Network Actions
   setOfflineMode: (isOffline: boolean) => void;
   
@@ -102,6 +110,7 @@ export const usePlayerStore = create<PlayerState>()(
       currentUser: null,
       streamingQuality: 'high',
       musicSource: 'both',
+      recentSearches: [],
       
       // Audio Engine Initial
       audioElement: null,
@@ -176,6 +185,25 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (volume) => set({ volume }),
       setStreamingQuality: (quality) => set({ streamingQuality: quality }),
       setMusicSource: (source) => set({ musicSource: source }),
+
+      addRecentSearch: (item) => set((state) => {
+          const newRecent = [item, ...state.recentSearches.filter(i => {
+              if (typeof i === 'string' && typeof item === 'string') return i.toLowerCase() !== item.toLowerCase();
+              if (typeof i !== 'string' && typeof item !== 'string') return i.id !== item.id;
+              // Filter out if types don't match (e.g. replacing a string with an object of same name? unlikely but safe)
+              return true;
+          })].slice(0, 10);
+          return { recentSearches: newRecent };
+      }),
+
+      removeRecentSearch: (id) => set((state) => ({
+          recentSearches: state.recentSearches.filter(i => {
+              if (typeof i === 'string') return i !== id;
+              return i.id !== id;
+          })
+      })),
+
+      clearRecentSearches: () => set({ recentSearches: [] }),
 
       addToHistory: (song) => {
           set((state) => {
@@ -495,7 +523,8 @@ export const usePlayerStore = create<PlayerState>()(
         userPlaylists: state.userPlaylists,
         currentUser: state.currentUser,
         streamingQuality: state.streamingQuality,
-        musicSource: state.musicSource, // Persist selection
+        musicSource: state.musicSource,
+        recentSearches: state.recentSearches, // Persist recent searches
         downloadedSongIds: state.downloadedSongIds,
       }), 
     }
