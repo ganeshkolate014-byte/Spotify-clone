@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info, BellRing } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { api, getImageUrl } from '../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -18,13 +18,10 @@ export const Player: React.FC = () => {
     likedSongs,
     toggleLike,
     isShuffling,
-    isOfflineMode,
     downloadedSongIds,
     addToQueue,
     startDownload,
-    // Audio State from store
-    currentTime,
-    duration,
+    duration, 
     audioElement
   } = usePlayerStore();
 
@@ -32,7 +29,6 @@ export const Player: React.FC = () => {
   
   const [dominantColor, setDominantColor] = useState<string>('#121212');
   const [isDragging, setIsDragging] = useState(false);
-  const [localProgress, setLocalProgress] = useState(0);
   
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isDownloadExpanded, setIsDownloadExpanded] = useState(false);
@@ -40,15 +36,59 @@ export const Player: React.FC = () => {
   const [sleepTimerId, setSleepTimerId] = useState<number | null>(null);
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
 
+  // Direct DOM Refs for High Performance (Zero React Re-renders during playback)
+  const fullProgressRef = useRef<HTMLDivElement>(null);
+  const fullThumbRef = useRef<HTMLDivElement>(null);
+  const fullTimeRef = useRef<HTMLSpanElement>(null);
+  const fullRangeRef = useRef<HTMLInputElement>(null);
+  const miniProgressRef = useRef<HTMLDivElement>(null);
+
   const isLiked = currentSong ? likedSongs.some(s => s.id === currentSong.id) : false;
   const isDownloaded = currentSong ? downloadedSongIds.includes(currentSong.id) : false;
 
-  // Sync local progress with store unless dragging
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return "-:--";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // PERFORMANCE CORE: Direct DOM updates via requestAnimationFrame
   useEffect(() => {
-      if (!isDragging) {
-          setLocalProgress(currentTime);
-      }
-  }, [currentTime, isDragging]);
+    let rafId: number;
+    
+    const updateUI = () => {
+        if (!audioElement || isDragging) return;
+        
+        const time = audioElement.currentTime;
+        const percent = (time / (duration || 1)) * 100;
+        const formattedTime = formatTime(time);
+
+        // Update Full Player
+        if (fullProgressRef.current) fullProgressRef.current.style.width = `${percent}%`;
+        if (fullThumbRef.current) fullThumbRef.current.style.left = `calc(${percent}% - 7px)`;
+        if (fullTimeRef.current) fullTimeRef.current.innerText = formattedTime;
+        if (fullRangeRef.current) fullRangeRef.current.value = time.toString();
+
+        // Update Mini Player
+        if (miniProgressRef.current) miniProgressRef.current.style.width = `${percent}%`;
+
+        if (isPlaying) {
+            rafId = requestAnimationFrame(updateUI);
+        }
+    };
+
+    if (isPlaying) {
+        rafId = requestAnimationFrame(updateUI);
+    } else if (audioElement) {
+        // Run once to sync UI if paused
+        updateUI();
+    }
+
+    return () => {
+        if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, audioElement, duration, isDragging, isFullScreen]);
 
   // Extract color from image
   useEffect(() => {
@@ -82,15 +122,18 @@ export const Player: React.FC = () => {
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    setLocalProgress(time);
-    if (audioElement) audioElement.currentTime = time;
-  };
+    
+    // Immediate visual update to prevent jumpiness
+    if (fullTimeRef.current) fullTimeRef.current.innerText = formatTime(time);
+    const percent = (time / (duration || 1)) * 100;
+    if (fullProgressRef.current) fullProgressRef.current.style.width = `${percent}%`;
+    if (fullThumbRef.current) fullThumbRef.current.style.left = `calc(${percent}% - 7px)`;
+    if (miniProgressRef.current) miniProgressRef.current.style.width = `${percent}%`;
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds)) return "-:--";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    // Seek Audio
+    if (audioElement) {
+        audioElement.currentTime = time;
+    }
   };
 
   // --- ACTIONS FOR MORE MENU ---
@@ -265,24 +308,27 @@ export const Player: React.FC = () => {
                                      <div className="absolute left-0 right-0 h-1.5 bg-white/20 rounded-full overflow-hidden">
                                          {/* Progress Fill */}
                                          <div 
+                                            ref={fullProgressRef}
                                             className="h-full bg-white rounded-full transition-all duration-75 ease-out" 
-                                            style={{ width: `${(localProgress / (duration || 1)) * 100}%` }}
+                                            style={{ width: '0%' }}
                                          />
                                      </div>
 
                                      {/* Thumb (Dot) - Positioned based on progress */}
                                      <div 
+                                        ref={fullThumbRef}
                                         className="absolute h-3.5 w-3.5 bg-white rounded-full shadow-md scale-100 transition-transform active:scale-125 z-10 pointer-events-none"
-                                        style={{ left: `calc(${(localProgress / (duration || 1)) * 100}% - 7px)` }}
+                                        style={{ left: '-7px' }}
                                      />
                                      
                                      {/* Interaction Layer (Invisible Input) */}
                                      <input 
+                                        ref={fullRangeRef}
                                         type="range" 
                                         min="0" 
                                         max={duration || 100} 
                                         step="any"
-                                        value={localProgress}
+                                        defaultValue="0"
                                         onChange={handleSeek}
                                         onMouseDown={() => setIsDragging(true)}
                                         onTouchStart={() => setIsDragging(true)}
@@ -292,7 +338,7 @@ export const Player: React.FC = () => {
                                     />
                                 </div>
                                 <div className="flex justify-between text-[11px] text-white/50 font-mono font-medium -mt-1">
-                                    <span>{formatTime(localProgress)}</span>
+                                    <span ref={fullTimeRef}>0:00</span>
                                     <span>{formatTime(duration)}</span>
                                 </div>
                             </div>
@@ -545,7 +591,11 @@ export const Player: React.FC = () => {
                     
                     {/* Progress Bar (Mini only) */}
                     <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-white/20 rounded-full overflow-hidden">
-                        <div className="h-full bg-white rounded-full" style={{ width: `${(localProgress / (duration || 1)) * 100}%` }}></div>
+                        <div 
+                            ref={miniProgressRef}
+                            className="h-full bg-white rounded-full" 
+                            style={{ width: '0%' }}
+                        ></div>
                     </div>
                 </motion.div>
             )}

@@ -21,7 +21,6 @@ interface PlayerState {
   
   // Audio Engine State
   audioElement: HTMLAudioElement | null;
-  currentTime: number;
   duration: number;
 
   // Offline & Downloads
@@ -44,7 +43,7 @@ interface PlayerState {
 
   // Actions
   setAudioElement: (el: HTMLAudioElement) => void;
-  setPlaybackTime: (time: number, duration: number) => void;
+  setDuration: (duration: number) => void;
   playSong: (song: Song, newQueue?: Song[]) => void;
   togglePlay: () => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -106,7 +105,6 @@ export const usePlayerStore = create<PlayerState>()(
       
       // Audio Engine Initial
       audioElement: null,
-      currentTime: 0,
       duration: 0,
       
       // Offline State
@@ -123,7 +121,7 @@ export const usePlayerStore = create<PlayerState>()(
       unsubscribers: [],
 
       setAudioElement: (el) => set({ audioElement: el }),
-      setPlaybackTime: (time, duration) => set({ currentTime: time, duration: duration }),
+      setDuration: (duration) => set({ duration }),
 
       setOfflineMode: (isOffline) => set({ isOfflineMode: isOffline }),
 

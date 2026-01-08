@@ -4,6 +4,8 @@ import { api, getAudioUrl, getOfflineAudioUrl, getImageUrl } from '../services/a
 
 export const AudioController: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Ref to suppress pause events during source change to prevent state thrashing
+  const isSwitchingTrack = useRef(false);
   
   const { 
     currentSong, 
@@ -13,7 +15,8 @@ export const AudioController: React.FC = () => {
     nextSong, 
     prevSong,
     setAudioElement,
-    setPlaybackTime,
+    setDuration,
+    duration,
     streamingQuality,
     isOfflineMode,
     downloadedSongIds
@@ -26,16 +29,25 @@ export const AudioController: React.FC = () => {
     }
   }, [setAudioElement]);
 
-  // Handle Playback State
+  // Handle Playback State (Play/Pause)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    const attemptPlay = async () => {
+        try {
+            await audio.play();
+        } catch (e: any) {
+            // AbortError is expected when we interrupt play with pause/load. Ignore it.
+            if (e.name !== 'AbortError') {
+                console.warn("Play blocked or interrupted", e);
+                setIsPlaying(false);
+            }
+        }
+    };
+
     if (isPlaying && audio.paused) {
-        audio.play().catch(e => {
-            console.warn("Play blocked or interrupted", e);
-            setIsPlaying(false);
-        });
+        attemptPlay();
     } else if (!isPlaying && !audio.paused) {
         audio.pause();
     }
@@ -45,6 +57,8 @@ export const AudioController: React.FC = () => {
   useEffect(() => {
     if (!currentSong || !audioRef.current) return;
 
+    let isCancelled = false;
+
     const loadSource = async () => {
         let url = '';
         
@@ -52,7 +66,10 @@ export const AudioController: React.FC = () => {
         if (isOfflineMode || downloadedSongIds.includes(currentSong.id)) {
             const blobUrl = await getOfflineAudioUrl(currentSong.id);
             if (blobUrl) url = blobUrl;
-            else if (isOfflineMode) { setIsPlaying(false); return; }
+            else if (isOfflineMode) { 
+                if (!isCancelled) setIsPlaying(false); 
+                return; 
+            }
         }
         
         // 2. Check Standard Download URLs
@@ -63,7 +80,7 @@ export const AudioController: React.FC = () => {
         // 3. Lazy Load Stream
         if (!url && !isOfflineMode) {
              try {
-                 setIsBuffering(true);
+                 if (!isCancelled) setIsBuffering(true);
                  const streamData = await api.getStreamInfo(currentSong.id);
                  if (streamData && streamData.stream_url) {
                      url = streamData.stream_url;
@@ -73,17 +90,49 @@ export const AudioController: React.FC = () => {
              }
         }
 
-        if (url && audioRef.current && audioRef.current.src !== url) {
-            const wasPlaying = isPlaying;
-            audioRef.current.src = url;
-            audioRef.current.load();
-            if (wasPlaying) {
-                 audioRef.current.play().catch(() => setIsPlaying(false));
+        if (isCancelled) return;
+
+        if (url && audioRef.current) {
+            // Avoid reloading if same src
+            if (audioRef.current.src === url) {
+                 if (usePlayerStore.getState().isPlaying && audioRef.current.paused) {
+                      audioRef.current.play().catch(() => {});
+                 }
+                 return;
             }
+
+            // Flag that we are switching tracks to prevent onPause from triggering
+            isSwitchingTrack.current = true;
+
+            const shouldPlay = usePlayerStore.getState().isPlaying;
+            audioRef.current.src = url;
+            // Note: src assignment triggers loading automatically
+            
+            if (shouldPlay) {
+                 try {
+                     await audioRef.current.play();
+                 } catch(e: any) {
+                     if (e.name !== 'AbortError') {
+                         console.warn("Autoplay blocked", e);
+                         if (!isCancelled) setIsPlaying(false);
+                     }
+                 }
+            } else {
+                 setIsPlaying(false);
+            }
+
+            // Reset switching flag after a short delay
+            setTimeout(() => {
+                isSwitchingTrack.current = false;
+            }, 200);
         }
     };
 
     loadSource();
+
+    return () => {
+        isCancelled = true;
+    };
   }, [currentSong?.id, streamingQuality, isOfflineMode, downloadedSongIds]);
 
   // Handle Media Session (Notification Controls)
@@ -98,11 +147,6 @@ export const AudioController: React.FC = () => {
       artist: artistName,
       album: currentSong.album?.name || "Single",
       artwork: [
-          { src: hqImage, sizes: '96x96', type: 'image/jpeg' },
-          { src: hqImage, sizes: '128x128', type: 'image/jpeg' },
-          { src: hqImage, sizes: '192x192', type: 'image/jpeg' },
-          { src: hqImage, sizes: '256x256', type: 'image/jpeg' },
-          { src: hqImage, sizes: '384x384', type: 'image/jpeg' },
           { src: hqImage, sizes: '512x512', type: 'image/jpeg' },
       ]
     });
@@ -112,19 +156,24 @@ export const AudioController: React.FC = () => {
     navigator.mediaSession.setActionHandler('previoustrack', prevSong);
     navigator.mediaSession.setActionHandler('nexttrack', nextSong);
     
-    // Cleanup
-    return () => {
-         if ('mediaSession' in navigator) {
-             navigator.mediaSession.metadata = null;
-         }
-    };
   }, [currentSong, setIsPlaying, prevSong, nextSong]);
 
   const handleTimeUpdate = () => {
+      // PERFORMANCE: Only update store if duration changes significantly
       if (audioRef.current) {
-          const time = audioRef.current.currentTime;
-          const duration = audioRef.current.duration || 0;
-          setPlaybackTime(time, duration);
+          const dur = audioRef.current.duration;
+          if (dur && dur !== Infinity && !isNaN(dur) && Math.abs(dur - duration) > 1) {
+              setDuration(dur);
+          }
+      }
+  };
+
+  const handlePause = () => {
+      // Ignore pause events caused by track switching
+      if (isSwitchingTrack.current) return;
+      
+      if (isPlaying && !audioRef.current?.seeking) {
+          setIsPlaying(false);
       }
   };
 
@@ -133,14 +182,17 @@ export const AudioController: React.FC = () => {
         ref={audioRef}
         preload="auto"
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleTimeUpdate}
         onEnded={nextSong}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
         onCanPlay={() => setIsBuffering(false)}
-        onPause={() => {
-            if (isPlaying && !audioRef.current?.seeking) setIsPlaying(false);
-        }}
+        onPause={handlePause}
         onPlay={() => !isPlaying && setIsPlaying(true)}
+        onError={(e) => {
+            console.error("Audio playback error", e);
+            setIsBuffering(false);
+        }}
     />
   );
 };
