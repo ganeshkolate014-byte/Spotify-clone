@@ -1,9 +1,8 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info, BellRing } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
-import { api, getImageUrl, getAudioUrl, getOfflineAudioUrl } from '../services/api';
+import { api, getImageUrl } from '../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Song } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 export const Player: React.FC = () => {
@@ -14,38 +13,42 @@ export const Player: React.FC = () => {
     isFullScreen,
     setFullScreen,
     togglePlay, 
-    setIsPlaying, 
-    setIsBuffering,
     nextSong, 
     prevSong,
     likedSongs,
     toggleLike,
     isShuffling,
-    streamingQuality,
     isOfflineMode,
     downloadedSongIds,
     addToQueue,
-    startDownload
+    startDownload,
+    // Audio State from store
+    currentTime,
+    duration,
+    audioElement
   } = usePlayerStore();
 
   const navigate = useNavigate();
-  const audioRef = useRef<HTMLAudioElement>(null);
   
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [dominantColor, setDominantColor] = useState<string>('#121212');
   const [isDragging, setIsDragging] = useState(false);
+  const [localProgress, setLocalProgress] = useState(0);
   
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isDownloadExpanded, setIsDownloadExpanded] = useState(false);
   
-  // New States for enhanced features
   const [sleepTimerId, setSleepTimerId] = useState<number | null>(null);
-
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
 
   const isLiked = currentSong ? likedSongs.some(s => s.id === currentSong.id) : false;
   const isDownloaded = currentSong ? downloadedSongIds.includes(currentSong.id) : false;
+
+  // Sync local progress with store unless dragging
+  useEffect(() => {
+      if (!isDragging) {
+          setLocalProgress(currentTime);
+      }
+  }, [currentTime, isDragging]);
 
   // Extract color from image
   useEffect(() => {
@@ -72,127 +75,15 @@ export const Player: React.FC = () => {
     img.onerror = () => setDominantColor('#181818');
   }, [currentSong?.id]);
 
-  // MEDIA SESSION API INTEGRATION (Notification Poster)
-  useEffect(() => {
-    if (!currentSong || !('mediaSession' in navigator)) return;
-
-    const artistName = currentSong.artists?.primary?.[0]?.name || "Unknown";
-    // Get the high-quality image for the notification poster
-    const hqImage = getImageUrl(currentSong.image);
-
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentSong.name,
-      artist: artistName,
-      album: currentSong.album?.name || "Single",
-      artwork: [
-          { src: hqImage, sizes: '96x96', type: 'image/jpeg' },
-          { src: hqImage, sizes: '128x128', type: 'image/jpeg' },
-          { src: hqImage, sizes: '192x192', type: 'image/jpeg' },
-          { src: hqImage, sizes: '256x256', type: 'image/jpeg' },
-          { src: hqImage, sizes: '384x384', type: 'image/jpeg' },
-          { src: hqImage, sizes: '512x512', type: 'image/jpeg' },
-      ]
-    });
-
-    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
-    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
-    navigator.mediaSession.setActionHandler('previoustrack', prevSong);
-    navigator.mediaSession.setActionHandler('nexttrack', nextSong);
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (audioRef.current && details.seekTime !== undefined) {
-            audioRef.current.currentTime = details.seekTime;
-            setProgress(details.seekTime);
-        }
-    });
-  }, [currentSong, setIsPlaying, prevSong, nextSong]);
-
-  // Sync Playback State with Media Session
-  useEffect(() => {
-      if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-      }
-  }, [isPlaying]);
-
-  // Audio Source Logic
-  useEffect(() => {
-    if (!currentSong || !audioRef.current) return;
-    
-    const setAudioSource = async () => {
-        let url = '';
-        
-        // 1. Check Offline Storage
-        if (isOfflineMode || downloadedSongIds.includes(currentSong.id)) {
-            const blobUrl = await getOfflineAudioUrl(currentSong.id);
-            if (blobUrl) url = blobUrl;
-            else if (isOfflineMode) { setIsPlaying(false); return; }
-        }
-        
-        // 2. Check Standard Download URLs (Old API)
-        if (!url && !isOfflineMode && currentSong.downloadUrl && currentSong.downloadUrl.length > 0) {
-             url = getAudioUrl(currentSong.downloadUrl, streamingQuality);
-        }
-
-        // 3. Lazy Load Stream (New API)
-        if (!url && !isOfflineMode) {
-             try {
-                 setIsBuffering(true);
-                 const streamData = await api.getStreamInfo(currentSong.id);
-                 if (streamData && streamData.stream_url) {
-                     url = streamData.stream_url;
-                 }
-             } catch(e) {
-                 console.error("Failed to fetch stream", e);
-             }
-        }
-
-        if (url && audioRef.current && audioRef.current.src !== url) {
-            const wasPlaying = isPlaying;
-            audioRef.current.src = url;
-            audioRef.current.load();
-            if (wasPlaying) {
-                 audioRef.current.play().catch(() => setIsPlaying(false));
-            }
-        }
-    };
-    setAudioSource();
-  }, [currentSong?.id, streamingQuality, isOfflineMode]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying && audio.paused) audio.play().catch(e => console.warn("Play interrupted", e));
-    else if (!isPlaying && !audio.paused) audio.pause();
-  }, [isPlaying]);
-
   // Reset download expansion when menu closes or song changes
   useEffect(() => {
       if (!isMoreMenuOpen) setIsDownloadExpanded(false);
   }, [isMoreMenuOpen, currentSong?.id]);
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current && !isDragging) {
-      const currentTime = audioRef.current.currentTime;
-      const duration = audioRef.current.duration || 0;
-      
-      setProgress(currentTime);
-      setDuration(duration);
-
-      if ('mediaSession' in navigator && duration > 0 && !isNaN(duration)) {
-          try {
-            navigator.mediaSession.setPositionState({
-                duration: duration,
-                playbackRate: audioRef.current.playbackRate,
-                position: currentTime
-            });
-          } catch (e) {}
-      }
-    }
-  };
-
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    setProgress(time);
-    if (audioRef.current) audioRef.current.currentTime = time;
+    setLocalProgress(time);
+    if (audioElement) audioElement.currentTime = time;
   };
 
   const formatTime = (seconds: number) => {
@@ -235,7 +126,7 @@ export const Player: React.FC = () => {
       } else {
           // Set for 30 mins
           const id = window.setTimeout(() => {
-              setIsPlaying(false);
+              if (audioElement) audioElement.pause();
               setSleepTimerId(null);
           }, 30 * 60 * 1000); 
           setSleepTimerId(id);
@@ -248,16 +139,11 @@ export const Player: React.FC = () => {
       setIsMoreMenuOpen(false);
       
       try {
-         // Use new Recommendations API
          const recommendations = await api.getRecommendations(currentSong.id);
-         
          if (recommendations.length > 0) {
-             // Add to queue
              recommendations.forEach(s => addToQueue(s));
-             // Optional feedback
              alert(`Added ${recommendations.length} recommended songs to queue.`);
          } else {
-             // Fallback to old search method
              const query = currentSong.artists.primary[0]?.name || currentSong.name;
              const songs = await api.searchSongs(query);
              const newSongs = songs.filter(s => s.id !== currentSong.id);
@@ -306,20 +192,6 @@ export const Player: React.FC = () => {
 
   return (
     <>
-        <audio 
-            ref={audioRef}
-            preload="auto"
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={nextSong}
-            onWaiting={() => setIsBuffering(true)}
-            onPlaying={() => setIsBuffering(false)}
-            onCanPlay={() => setIsBuffering(false)}
-            onPause={() => {
-                if (isPlaying && !isBuffering && audioRef.current?.paused) setIsPlaying(false);
-            }}
-            onPlay={() => !isPlaying && setIsPlaying(true)}
-        />
-
         <AnimatePresence mode="wait">
             {isFullScreen ? (
                 <motion.div 
@@ -394,14 +266,14 @@ export const Player: React.FC = () => {
                                          {/* Progress Fill */}
                                          <div 
                                             className="h-full bg-white rounded-full transition-all duration-75 ease-out" 
-                                            style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+                                            style={{ width: `${(localProgress / (duration || 1)) * 100}%` }}
                                          />
                                      </div>
 
                                      {/* Thumb (Dot) - Positioned based on progress */}
                                      <div 
                                         className="absolute h-3.5 w-3.5 bg-white rounded-full shadow-md scale-100 transition-transform active:scale-125 z-10 pointer-events-none"
-                                        style={{ left: `calc(${(progress / (duration || 1)) * 100}% - 7px)` }}
+                                        style={{ left: `calc(${(localProgress / (duration || 1)) * 100}% - 7px)` }}
                                      />
                                      
                                      {/* Interaction Layer (Invisible Input) */}
@@ -410,7 +282,7 @@ export const Player: React.FC = () => {
                                         min="0" 
                                         max={duration || 100} 
                                         step="any"
-                                        value={progress}
+                                        value={localProgress}
                                         onChange={handleSeek}
                                         onMouseDown={() => setIsDragging(true)}
                                         onTouchStart={() => setIsDragging(true)}
@@ -420,7 +292,7 @@ export const Player: React.FC = () => {
                                     />
                                 </div>
                                 <div className="flex justify-between text-[11px] text-white/50 font-mono font-medium -mt-1">
-                                    <span>{formatTime(progress)}</span>
+                                    <span>{formatTime(localProgress)}</span>
                                     <span>{formatTime(duration)}</span>
                                 </div>
                             </div>
@@ -673,7 +545,7 @@ export const Player: React.FC = () => {
                     
                     {/* Progress Bar (Mini only) */}
                     <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-white/20 rounded-full overflow-hidden">
-                        <div className="h-full bg-white rounded-full" style={{ width: `${(progress / (duration || 1)) * 100}%` }}></div>
+                        <div className="h-full bg-white rounded-full" style={{ width: `${(localProgress / (duration || 1)) * 100}%` }}></div>
                     </div>
                 </motion.div>
             )}

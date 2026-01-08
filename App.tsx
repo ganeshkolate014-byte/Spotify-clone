@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 // import { FriendsActivity } from './components/FriendsActivity'; // MAINTENANCE
 import { Player } from './components/Player';
+import { AudioController } from './components/AudioController';
 import { BottomNav } from './components/BottomNav';
 import { DownloadProgress } from './components/DownloadProgress';
 // import { ChatWindow } from './components/ChatWindow'; // MAINTENANCE
@@ -82,6 +83,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="flex h-[100dvh] w-screen bg-black text-white overflow-hidden relative">
+      <AudioController /> {/* Persistent Audio Logic */}
+      
       {!isFullScreenPage && <Sidebar />}
       
       {/* Global Offline Indicator */}

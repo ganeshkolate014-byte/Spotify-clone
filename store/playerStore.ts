@@ -19,6 +19,11 @@ interface PlayerState {
   streamingQuality: 'low' | 'normal' | 'high';
   musicSource: 'local' | 'youtube' | 'both';
   
+  // Audio Engine State
+  audioElement: HTMLAudioElement | null;
+  currentTime: number;
+  duration: number;
+
   // Offline & Downloads
   isOfflineMode: boolean;
   downloadedSongIds: string[];
@@ -38,6 +43,8 @@ interface PlayerState {
   unsubscribers: Function[];
 
   // Actions
+  setAudioElement: (el: HTMLAudioElement) => void;
+  setPlaybackTime: (time: number, duration: number) => void;
   playSong: (song: Song, newQueue?: Song[]) => void;
   togglePlay: () => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -97,6 +104,11 @@ export const usePlayerStore = create<PlayerState>()(
       streamingQuality: 'high',
       musicSource: 'both',
       
+      // Audio Engine Initial
+      audioElement: null,
+      currentTime: 0,
+      duration: 0,
+      
       // Offline State
       isOfflineMode: !navigator.onLine,
       downloadedSongIds: [],
@@ -109,6 +121,9 @@ export const usePlayerStore = create<PlayerState>()(
       activeChatFriendId: null,
       partySession: null,
       unsubscribers: [],
+
+      setAudioElement: (el) => set({ audioElement: el }),
+      setPlaybackTime: (time, duration) => set({ currentTime: time, duration: duration }),
 
       setOfflineMode: (isOffline) => set({ isOfflineMode: isOffline }),
 
