@@ -1,0 +1,16 @@
+{
+  "name": "Spotify©",
+  "short_name": "Spotify",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://static.vecteezy.com/system/resources/previews/065/386/690/non_2x/spotify-white-logo-icon-spotify-app-editable-svg-transparent-background-premium-social-media-design-for-digital-download-free-png.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
