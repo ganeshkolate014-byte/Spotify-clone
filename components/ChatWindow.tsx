@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-import { X, Send, PlayCircle, StopCircle, Music, Radio, ChevronDown, ArrowLeft } from 'lucide-react';
+import { X, Send, PlayCircle, StopCircle, Music, Radio, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const ChatWindow: React.FC = () => {
@@ -11,9 +11,7 @@ export const ChatWindow: React.FC = () => {
   const friend = friends.find(f => f.id === activeChatFriendId);
 
   useEffect(() => {
-    if (friend) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [friend?.chatHistory, activeChatFriendId]);
 
   if (!activeChatFriendId || !friend || !currentUser) return null;
@@ -34,19 +32,15 @@ export const ChatWindow: React.FC = () => {
 
   return (
     <motion.div 
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="fixed inset-0 md:inset-auto md:bottom-0 md:right-4 md:w-[360px] md:h-[500px] bg-[#121212] md:rounded-t-2xl md:border md:border-[#282828] md:shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex flex-col z-[200] overflow-hidden font-sans"
+        initial={{ y: 20, opacity: 0, scale: 0.95 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 20, opacity: 0 }}
+        className="fixed bottom-24 right-4 w-[360px] h-[500px] bg-[#121212] rounded-2xl border border-[#282828] shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex flex-col z-[100] overflow-hidden font-sans"
     >
         
         {/* Header */}
-        <div className="bg-[#181818] p-3 flex items-center justify-between border-b border-[#282828] shrink-0">
+        <div className="bg-[#181818]/95 backdrop-blur-md p-3 flex items-center justify-between border-b border-[#282828]">
             <div className="flex items-center gap-3">
-                <button onClick={() => openChat(null)} className="md:hidden p-2 -ml-2 text-white">
-                    <ArrowLeft size={24} />
-                </button>
                 <div className="relative">
                     <img src={friend.image || `https://ui-avatars.com/api/?name=${friend.name}&background=1DB954&color=fff`} className="w-10 h-10 rounded-full object-cover shadow-md" alt="" />
                     {friend.status === 'listening' ? (
@@ -78,7 +72,7 @@ export const ChatWindow: React.FC = () => {
                 >
                     <Radio size={20} className={isHostingParty ? "animate-pulse" : ""} />
                  </button>
-                 <button onClick={() => openChat(null)} className="hidden md:block p-2 text-[#B3B3B3] hover:text-white hover:bg-[#282828] rounded-full transition-colors">
+                 <button onClick={() => openChat(null)} className="p-2 text-[#B3B3B3] hover:text-white hover:bg-[#282828] rounded-full transition-colors">
                     <ChevronDown size={20} />
                 </button>
             </div>
@@ -97,7 +91,7 @@ export const ChatWindow: React.FC = () => {
                  return (
                      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} ${isConsecutive ? 'mt-0.5' : 'mt-2'}`}>
                          <div 
-                            className={`max-w-[75%] px-3.5 py-2 text-[15px] md:text-[13px] shadow-sm leading-relaxed relative group ${
+                            className={`max-w-[75%] px-3.5 py-2 text-[13px] shadow-sm leading-relaxed relative group ${
                                 isMe 
                                 ? 'bg-[#1DB954] text-black rounded-2xl rounded-tr-sm' 
                                 : 'bg-[#2A2A2A] text-white rounded-2xl rounded-tl-sm'
@@ -115,17 +109,17 @@ export const ChatWindow: React.FC = () => {
         </div>
 
         {/* Input Area */}
-        <form onSubmit={handleSend} className="p-3 bg-[#181818] border-t border-[#282828] flex items-center gap-2 mb-safe-bottom">
+        <form onSubmit={handleSend} className="p-3 bg-[#181818] border-t border-[#282828] flex items-center gap-2">
             <input 
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Type a message..."
-                className="flex-1 bg-[#282828] rounded-full px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#555] transition-all placeholder-[#555]"
+                className="flex-1 bg-[#282828] rounded-full px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#555] transition-all placeholder-[#555]"
             />
             <button 
                 type="submit" 
                 disabled={!text.trim()} 
-                className="p-3 bg-[#1DB954] text-black rounded-full hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"
+                className="p-2.5 bg-[#1DB954] text-black rounded-full hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all shadow-lg"
             >
                 <Send size={18} fill="black" className="ml-0.5" />
             </button>
