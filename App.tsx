@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
-// import { FriendsActivity } from './components/FriendsActivity'; // MAINTENANCE
+import { FriendsActivity } from './components/FriendsActivity';
 import { Player } from './components/Player';
 import { AudioController } from './components/AudioController';
 import { BottomNav } from './components/BottomNav';
 import { DownloadProgress } from './components/DownloadProgress';
-// import { ChatWindow } from './components/ChatWindow'; // MAINTENANCE
+import { ChatWindow } from './components/ChatWindow';
 import { Home } from './pages/Home';
 import { Search } from './pages/Search';
 import { Library } from './pages/Library';
@@ -114,9 +114,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {!isFullScreenPage && <div className="h-32 md:h-24 w-full"></div>}
       </main>
 
+      {!isFullScreenPage && <FriendsActivity />}
       {!isFullScreenPage && <DownloadProgress />}
       {!isFullScreenPage && <Player />}
       {!isFullScreenPage && <BottomNav />}
+      {!isFullScreenPage && <ChatWindow />}
     </div>
   );
 };

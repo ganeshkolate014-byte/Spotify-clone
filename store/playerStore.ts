@@ -346,7 +346,10 @@ export const usePlayerStore = create<PlayerState>()(
 
                  const mergedFriends: Friend[] = serverContactEmails.map((email: string) => {
                      const existing = existingFriends.find(f => f.id === email);
-                     const chatHistory = serverChats[email] || serverChats[email.replace(/\./g, '_dot_')] || [];
+                     // Check for chat history using sanitized key (replace dot with underscore)
+                     const sanitizedKey = email.replace(/\./g, '_');
+                     const chatHistory = serverChats[sanitizedKey] || serverChats[email] || [];
+                     
                      return {
                          id: email,
                          name: existing?.name || email.split('@')[0], 
@@ -484,6 +487,7 @@ export const usePlayerStore = create<PlayerState>()(
               timestamp: Date.now()
           };
 
+          // Optimistic update
           set((state) => {
               const updatedFriends = state.friends.map(f => {
                   if (f.id === friendId) {
