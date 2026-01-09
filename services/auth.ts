@@ -1,10 +1,11 @@
-
 import { User, ChatMessage, UserPlaylist } from '../types';
 import { auth, db } from './firebase';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signOut 
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { 
   doc, 
@@ -103,6 +104,66 @@ export const authService = {
         throw new Error("Password or Email Incorrect");
       }
       throw error;
+    }
+  },
+
+  // 3. GOOGLE LOGIN
+  loginWithGoogle: async (): Promise<User> => {
+    try {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const uid = user.uid;
+
+        const userDocRef = doc(db, "users", uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+            // Create new user from Google Data
+            const newUser: User = {
+                name: user.displayName || 'User',
+                email: user.email || '',
+                image: user.photoURL || '',
+                friends: [],
+                playlists: [],
+                likedSongs: [],
+                favoriteArtists: [],
+                history: [],
+                chats: {}
+            };
+            
+            await setDoc(doc(db, "users", uid), cleanData({
+                ...newUser,
+                settings: { volume: 1 },
+                currentActivity: { status: 'online', timestamp: Date.now() }
+            }));
+            
+            return newUser;
+        } else {
+            // Existing user, just update online status
+            await updateDoc(userDocRef, {
+                "currentActivity.status": "online",
+                "currentActivity.timestamp": Date.now()
+            });
+            
+            const userData = userDoc.data();
+            // Fallback for image if it was empty but google has one now (optional, keeping current flow simpler)
+            
+            return {
+                email: userData.email,
+                name: userData.name,
+                image: userData.image || user.photoURL || '',
+                friends: userData.friends || [],
+                playlists: userData.playlists || [],
+                likedSongs: userData.likedSongs || [],
+                history: userData.history || [],
+                favoriteArtists: userData.favoriteArtists || [],
+                chats: userData.chats || {},
+                currentActivity: userData.currentActivity
+            };
+        }
+    } catch (error: any) {
+        throw new Error(error.message || 'Google Login failed');
     }
   },
 
