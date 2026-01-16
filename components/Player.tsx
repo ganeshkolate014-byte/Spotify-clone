@@ -307,7 +307,15 @@ export const Player: React.FC = () => {
                             </div>
 
                             {/* Scrubber - Improved Hit Area */}
-                            <div className="flex flex-col gap-2 pt-2">
+                            <div
+                                className="flex flex-col gap-2 pt-2"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onPointerUp={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                onTouchEnd={(e) => e.stopPropagation()}
+                                onTouchMove={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 {/* Container with larger height for touch target */}
                                 <div className="relative h-6 w-full flex items-center group cursor-pointer">
                                      
