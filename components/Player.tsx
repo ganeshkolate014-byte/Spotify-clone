@@ -131,11 +131,15 @@ export const Player: React.FC = () => {
     if (fullProgressRef.current) fullProgressRef.current.style.width = `${percent}%`;
     if (fullThumbRef.current) fullThumbRef.current.style.left = `calc(${percent}% - 7px)`;
     if (miniProgressRef.current) miniProgressRef.current.style.width = `${percent}%`;
+  };
 
-    // Seek Audio
-    if (audioElement) {
+  const commitSeek = (e: React.SyntheticEvent | Event) => {
+    e.stopPropagation();
+    if (audioElement && fullRangeRef.current) {
+        const time = parseFloat(fullRangeRef.current.value);
         audioElement.currentTime = time;
     }
+    setIsDragging(false);
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,8 +351,8 @@ export const Player: React.FC = () => {
                                         onChange={handleSeek}
                                         onMouseDown={(e) => { e.stopPropagation(); setIsDragging(true); }}
                                         onTouchStart={(e) => { e.stopPropagation(); setIsDragging(true); }}
-                                        onMouseUp={(e) => { e.stopPropagation(); setIsDragging(false); }}
-                                        onTouchEnd={(e) => { e.stopPropagation(); setIsDragging(false); }}
+                                        onMouseUp={commitSeek}
+                                        onTouchEnd={commitSeek}
                                         onClick={(e) => e.stopPropagation()}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                     />
