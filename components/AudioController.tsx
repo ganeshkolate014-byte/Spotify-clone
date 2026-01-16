@@ -19,15 +19,24 @@ export const AudioController: React.FC = () => {
     duration,
     streamingQuality,
     isOfflineMode,
-    downloadedSongIds
+    downloadedSongIds,
+    volume
   } = usePlayerStore();
 
   // Register audio element in store on mount
   useEffect(() => {
     if (audioRef.current) {
         setAudioElement(audioRef.current);
+        audioRef.current.volume = volume;
     }
   }, [setAudioElement]);
+
+  // Handle Volume Changes
+  useEffect(() => {
+    if (audioRef.current) {
+        audioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   // Handle Playback State (Play/Pause)
   useEffect(() => {
@@ -84,9 +93,12 @@ export const AudioController: React.FC = () => {
                  const streamData = await api.getStreamInfo(currentSong.id);
                  if (streamData && streamData.stream_url) {
                      url = streamData.stream_url;
+                 } else {
+                     if (!isCancelled) setIsBuffering(false);
                  }
              } catch(e) {
                  console.error("Failed to fetch stream", e);
+                 if (!isCancelled) setIsBuffering(false);
              }
         }
 

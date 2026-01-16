@@ -15,7 +15,7 @@ interface PlayerState {
   favoriteArtists: Artist[];
   userPlaylists: UserPlaylist[];
   volume: number;
-  isShuffling: boolean;
+  shuffleMode: 'off' | 'on' | 'smart';
   streamingQuality: 'low' | 'normal' | 'high';
   musicSource: 'local' | 'youtube' | 'both';
   
@@ -49,9 +49,11 @@ interface PlayerState {
   setDuration: (duration: number) => void;
   playSong: (song: Song, newQueue?: Song[]) => void;
   togglePlay: () => void;
+  seek: (time: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setIsBuffering: (isBuffering: boolean) => void;
   setFullScreen: (isFull: boolean) => void;
+  toggleShuffle: () => void;
   nextSong: () => void;
   prevSong: () => void;
   addToQueue: (song: Song) => void;
@@ -106,7 +108,7 @@ export const usePlayerStore = create<PlayerState>()(
       favoriteArtists: [],
       userPlaylists: [],
       volume: 1,
-      isShuffling: false,
+      shuffleMode: 'off',
       currentUser: null,
       streamingQuality: 'high',
       musicSource: 'both',
@@ -147,12 +149,16 @@ export const usePlayerStore = create<PlayerState>()(
           isPlaying: true,
           isBuffering: true, 
           queue: newQueue ? newQueue : state.queue,
-          isFullScreen: false, 
         }));
       },
 
       togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
       
+      seek: (time) => {
+          const { audioElement } = get();
+          if (audioElement) audioElement.currentTime = time;
+      },
+
       setIsPlaying: (isPlaying) => {
           set({ isPlaying });
           const { currentUser, currentSong, isOfflineMode } = get();
@@ -164,12 +170,25 @@ export const usePlayerStore = create<PlayerState>()(
       setIsBuffering: (isBuffering) => set({ isBuffering }),
       setFullScreen: (isFullScreen) => set({ isFullScreen }),
 
+      toggleShuffle: () => set((state) => {
+          const modes: ('off' | 'on' | 'smart')[] = ['off', 'on', 'smart'];
+          const next = modes[(modes.indexOf(state.shuffleMode) + 1) % modes.length];
+          return { shuffleMode: next };
+      }),
+
       nextSong: () => {
-        const { queue, currentSong, isShuffling } = get();
+        const { queue, currentSong, shuffleMode } = get();
         if (!currentSong) return;
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-        let nextIndex = isShuffling ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
-        if (nextIndex < queue.length) get().playSong(queue[nextIndex]);
+
+        let nextIndex;
+        if (shuffleMode === 'on' || shuffleMode === 'smart') {
+            nextIndex = Math.floor(Math.random() * queue.length);
+        } else {
+            nextIndex = currentIndex + 1;
+        }
+
+        if (nextIndex < queue.length && nextIndex >= 0) get().playSong(queue[nextIndex]);
         else set({ isPlaying: false });
       },
 
