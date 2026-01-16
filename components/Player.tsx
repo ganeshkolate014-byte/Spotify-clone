@@ -337,10 +337,11 @@ export const Player: React.FC = () => {
                                         step="any"
                                         defaultValue="0"
                                         onChange={handleSeek}
-                                        onMouseDown={() => setIsDragging(true)}
-                                        onTouchStart={() => setIsDragging(true)}
-                                        onMouseUp={() => setIsDragging(false)}
-                                        onTouchEnd={() => setIsDragging(false)}
+                                        onMouseDown={(e) => { e.stopPropagation(); setIsDragging(true); }}
+                                        onTouchStart={(e) => { e.stopPropagation(); setIsDragging(true); }}
+                                        onMouseUp={(e) => { e.stopPropagation(); setIsDragging(false); }}
+                                        onTouchEnd={(e) => { e.stopPropagation(); setIsDragging(false); }}
+                                        onClick={(e) => e.stopPropagation()}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                     />
                                 </div>
