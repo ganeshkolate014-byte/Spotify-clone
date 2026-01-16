@@ -45,6 +45,9 @@ export const Player: React.FC = () => {
   const fullRangeRef = useRef<HTMLInputElement>(null);
   const miniProgressRef = useRef<HTMLDivElement>(null);
 
+  // Ref to track seek target during drag to avoid reading stale DOM values
+  const seekTargetRef = useRef<number | null>(null);
+
   const isLiked = currentSong ? likedSongs.some(s => s.id === currentSong.id) : false;
   const isDownloaded = currentSong ? downloadedSongIds.includes(currentSong.id) : false;
 
@@ -124,6 +127,7 @@ export const Player: React.FC = () => {
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
+    seekTargetRef.current = time;
     
     // Immediate visual update to prevent jumpiness
     if (fullTimeRef.current) fullTimeRef.current.innerText = formatTime(time);
@@ -133,11 +137,33 @@ export const Player: React.FC = () => {
     if (miniProgressRef.current) miniProgressRef.current.style.width = `${percent}%`;
   };
 
-  const commitSeek = (e: React.SyntheticEvent | Event) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLInputElement>) => {
     e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    seekTargetRef.current = null;
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    e.currentTarget.releasePointerCapture(e.pointerId);
+
+    // Only commit if we have a valid seek target from dragging
+    if (audioElement && seekTargetRef.current !== null) {
+        audioElement.currentTime = seekTargetRef.current;
+    }
+    setIsDragging(false);
+  };
+
+  const handleSeekClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    // Fallback for Taps where onChange/PointerUp sequence might be different
+    // Click event guarantees the input value is updated
     if (audioElement && fullRangeRef.current) {
-        const time = parseFloat(fullRangeRef.current.value);
-        audioElement.currentTime = time;
+        const val = parseFloat(fullRangeRef.current.value);
+        if(!isNaN(val)) {
+            audioElement.currentTime = val;
+        }
     }
     setIsDragging(false);
   };
@@ -349,11 +375,9 @@ export const Player: React.FC = () => {
                                         step="any"
                                         defaultValue="0"
                                         onChange={handleSeek}
-                                        onMouseDown={(e) => { e.stopPropagation(); setIsDragging(true); }}
-                                        onTouchStart={(e) => { e.stopPropagation(); setIsDragging(true); }}
-                                        onMouseUp={commitSeek}
-                                        onTouchEnd={commitSeek}
-                                        onClick={(e) => e.stopPropagation()}
+                                        onPointerDown={handlePointerDown}
+                                        onPointerUp={handlePointerUp}
+                                        onClick={handleSeekClick}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                     />
                                 </div>
