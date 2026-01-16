@@ -284,8 +284,8 @@ export const Player: React.FC = () => {
                         </div>
 
                         {/* Main Artwork Area */}
-                        <div className="flex-1 flex flex-col justify-center min-h-0 relative my-4">
-                            <div className="relative w-full aspect-square max-w-[340px] mx-auto shadow-2xl rounded-xl overflow-hidden">
+                        <div className="flex-1 flex flex-col justify-center items-center min-h-0 relative my-2">
+                            <div className="relative aspect-square max-h-full max-w-[340px] shadow-2xl rounded-xl overflow-hidden">
                                 <img 
                                     src={imageUrl} 
                                     alt="Cover"
@@ -295,7 +295,7 @@ export const Player: React.FC = () => {
                         </div>
 
                         {/* Info & Controls */}
-                        <div className="flex flex-col gap-6 mb-10">
+                        <div className="flex flex-col gap-4 mb-2 shrink-0">
                             <div className="flex items-center justify-between">
                                 <div className="flex flex-col overflow-hidden mr-4 min-w-0">
                                     <h2 className="text-2xl font-bold text-white truncate">
