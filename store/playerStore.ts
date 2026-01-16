@@ -147,7 +147,6 @@ export const usePlayerStore = create<PlayerState>()(
           isPlaying: true,
           isBuffering: true, 
           queue: newQueue ? newQueue : state.queue,
-          isFullScreen: false, 
         }));
       },
 

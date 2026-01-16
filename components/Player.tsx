@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronDown, MoreHorizontal, Download, ListMusic, Heart, Loader2, Shuffle, Repeat, PlusCircle, CheckCircle2, Disc, User, Share2, ListPlus, Radio, Mic2, Moon, Info, Volume2, VolumeX, Volume1 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { api, getImageUrl } from '../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,7 +22,9 @@ export const Player: React.FC = () => {
     addToQueue,
     startDownload,
     duration, 
-    audioElement
+    audioElement,
+    volume,
+    setVolume
   } = usePlayerStore();
 
   const navigate = useNavigate();
@@ -134,6 +136,11 @@ export const Player: React.FC = () => {
     if (audioElement) {
         audioElement.currentTime = time;
     }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseFloat(e.target.value);
+      setVolume(val);
   };
 
   // --- ACTIONS FOR MORE MENU ---
@@ -362,6 +369,29 @@ export const Player: React.FC = () => {
                                 <button className="text-white/50 shrink-0 hover:text-white transition-colors p-2">
                                     <Mic2 size={22} />
                                 </button>
+
+                                {/* Volume Control */}
+                                <div className="flex items-center gap-2 flex-1 max-w-[140px] px-2 justify-center">
+                                    <button onClick={() => setVolume(volume === 0 ? 1 : 0)} className="text-white/70 hover:text-white">
+                                        {volume === 0 ? <VolumeX size={20} /> : volume < 0.5 ? <Volume1 size={20} /> : <Volume2 size={20} />}
+                                    </button>
+                                    <div className="relative h-1 bg-white/20 rounded-full flex-1 group cursor-pointer max-w-[100px]">
+                                        <div
+                                            className="absolute left-0 top-0 bottom-0 bg-white rounded-full group-hover:bg-[#1DB954] transition-colors"
+                                            style={{ width: `${volume * 100}%` }}
+                                        />
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={volume}
+                                            onChange={handleVolumeChange}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+
                                 <button className="text-white/50 shrink-0 hover:text-white transition-colors p-2"><ListMusic size={22} /></button>
                             </div>
                         </div>
