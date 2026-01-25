@@ -113,7 +113,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({ onClos
         initial={{ y: 50, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 50, opacity: 0, scale: 0.95 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        transition={{ type: "tween", duration: 0.25, ease: "easeOut" }}
         className="bg-[#121212] w-full max-w-lg rounded-t-2xl md:rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]"
       >
         

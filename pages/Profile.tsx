@@ -2,8 +2,37 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../store/playerStore';
 import { uploadToCloudinary } from '../services/api';
-import { ArrowLeft, Camera, Loader2, Save, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield, RotateCcw, Youtube, Library, Globe, Layers, DownloadCloud } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, LogOut, Cloud, SignalHigh, SignalMedium, SignalLow, Music2, Users, ChevronRight, Mail, Shield, RotateCcw, Youtube, Library, Globe, Layers, DownloadCloud } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { duration: 0.4, ease: "easeOut" }
+  }
+};
+
+const heroVariants = {
+  hidden: { opacity: 0, scale: 0.9 },
+  visible: { 
+    opacity: 1, 
+    scale: 1,
+    transition: { duration: 0.4, ease: "easeOut" }
+  }
+};
 
 export const Profile: React.FC = () => {
   const { currentUser, updateUserProfile, logoutUser, streamingQuality, setStreamingQuality, favoriteArtists, musicSource, setMusicSource } = usePlayerStore();
@@ -137,10 +166,18 @@ export const Profile: React.FC = () => {
           </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 flex flex-col gap-8 -mt-2">
+      <motion.div 
+        className="max-w-3xl mx-auto px-6 flex flex-col gap-8 -mt-2"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
           
           {/* Hero Profile Section */}
-          <div className="flex flex-col items-center gap-6 animate-in slide-in-from-bottom-4 duration-500">
+          <motion.div 
+            variants={heroVariants}
+            className="flex flex-col items-center gap-6"
+          >
               <div 
                 onClick={() => fileInputRef.current?.click()}
                 className="relative w-48 h-48 md:w-56 md:h-56 rounded-full shadow-[0_8px_40px_rgba(0,0,0,0.5)] group cursor-pointer"
@@ -157,9 +194,14 @@ export const Profile: React.FC = () => {
                      <Camera size={32} className="text-white mb-2" />
                      <span className="text-xs font-bold uppercase tracking-widest">Edit Photo</span>
                  </div>
-                 <div className="absolute bottom-2 right-4 bg-[#1DB954] text-black p-2 rounded-full border-4 border-[#121212]">
+                 <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.5, type: "tween", ease: "backOut" }}
+                    className="absolute bottom-2 right-4 bg-[#1DB954] text-black p-2 rounded-full border-4 border-[#121212]"
+                 >
                     <Cloud size={16} />
-                 </div>
+                 </motion.div>
               </div>
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
 
@@ -171,7 +213,10 @@ export const Profile: React.FC = () => {
                     className="bg-transparent text-center text-4xl md:text-5xl font-black text-white outline-none border-b border-transparent focus:border-white/20 pb-1 w-full max-w-md transition-all placeholder-white/20"
                     placeholder="Name"
                   />
-                  <div className="flex items-center gap-6 text-sm font-bold text-white/70 mt-2">
+                  <motion.div 
+                    variants={itemVariants}
+                    className="flex items-center gap-6 text-sm font-bold text-white/70 mt-2"
+                  >
                       <div className="flex flex-col items-center">
                           <span className="text-white">12</span>
                           <span className="text-[10px] uppercase tracking-wider">Playlists</span>
@@ -184,14 +229,14 @@ export const Profile: React.FC = () => {
                           <span className="text-white">23</span>
                           <span className="text-[10px] uppercase tracking-wider">Following</span>
                       </div>
-                  </div>
+                  </motion.div>
               </div>
-          </div>
+          </motion.div>
 
           <form onSubmit={handleSave} className="flex flex-col gap-6 mt-4">
               
               {/* Account Card */}
-              <div className="bg-[#181818] p-5 rounded-lg">
+              <motion.div variants={itemVariants} className="bg-[#181818] p-5 rounded-lg">
                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                       <Shield size={20} className="text-[#1DB954]"/> Account
                    </h3>
@@ -205,10 +250,11 @@ export const Profile: React.FC = () => {
                       </div>
                       <span className="px-3 py-1 bg-[#2A2A2A] rounded-full text-[10px] font-bold text-[#B3B3B3]">PRIVATE</span>
                    </div>
-              </div>
+              </motion.div>
 
               {/* Taste Profile */}
-              <div 
+              <motion.div 
+                  variants={itemVariants}
                   onClick={() => navigate('/artists/select')}
                   className="bg-[#181818] p-5 rounded-lg cursor-pointer hover:bg-[#202020] transition-colors group"
               >
@@ -233,10 +279,10 @@ export const Profile: React.FC = () => {
                        )}
                        {favoriteArtists.length === 0 && <span className="text-sm font-bold text-[#1DB954]">Select Artists</span>}
                    </div>
-              </div>
+              </motion.div>
 
                {/* Music Source Selection */}
-               <div className="bg-[#181818] p-5 rounded-lg">
+               <motion.div variants={itemVariants} className="bg-[#181818] p-5 rounded-lg">
                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                       <Globe size={20} className="text-[#1DB954]"/> Music Source
                    </h3>
@@ -256,7 +302,7 @@ export const Profile: React.FC = () => {
                                 : 'hover:bg-[#2A2A2A]/50'
                             }`}
                           >
-                              <div className={`p-2 rounded-full mr-4 ${musicSource === opt.val ? 'text-[#1DB954]' : 'text-[#555]'}`}>
+                              <div className={`p-2 rounded-full mr-4 ${streamingQuality === opt.val ? 'text-[#1DB954]' : 'text-[#555]'}`}>
                                   <opt.Icon size={20} />
                               </div>
                               <div className="flex flex-col items-start flex-1">
@@ -267,10 +313,10 @@ export const Profile: React.FC = () => {
                           </button>
                       ))}
                    </div>
-              </div>
+              </motion.div>
 
               {/* Audio Quality */}
-              <div className="bg-[#181818] p-5 rounded-lg">
+              <motion.div variants={itemVariants} className="bg-[#181818] p-5 rounded-lg">
                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                       <Music2 size={20} className="text-[#1DB954]"/> Audio Quality
                    </h3>
@@ -301,10 +347,10 @@ export const Profile: React.FC = () => {
                           </button>
                       ))}
                    </div>
-              </div>
+              </motion.div>
               
               {/* App Updates Section */}
-              <div className="bg-[#181818] p-5 rounded-lg">
+              <motion.div variants={itemVariants} className="bg-[#181818] p-5 rounded-lg">
                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                       <DownloadCloud size={20} className="text-[#1DB954]"/> App Updates
                    </h3>
@@ -335,18 +381,22 @@ export const Profile: React.FC = () => {
                         </button>
                    </div>
                    {updateAvailable && (
-                       <div className="mt-4 text-xs text-[#B3B3B3] bg-[#222] p-3 rounded-md animate-in fade-in slide-in-from-top-2">
+                       <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        className="mt-4 text-xs text-[#B3B3B3] bg-[#222] p-3 rounded-md"
+                       >
                            <p className="font-bold text-white mb-1">What's New in 2.5.0:</p>
                            <ul className="list-disc pl-4 space-y-1">
                                <li>Improved audio engine for cleaner bass</li>
                                <li>New "Sleep Timer" feature in player</li>
                                <li>Bug fixes and performance improvements</li>
                            </ul>
-                       </div>
+                       </motion.div>
                    )}
-              </div>
+              </motion.div>
 
-              <div className="flex justify-center pt-4 pb-8">
+              <motion.div variants={itemVariants} className="flex justify-center pt-4 pb-8">
                   <button 
                     type="submit" 
                     disabled={loading}
@@ -354,11 +404,11 @@ export const Profile: React.FC = () => {
                   >
                      {loading ? <Loader2 size={20} className="animate-spin" /> : 'Save Changes'}
                   </button>
-              </div>
+              </motion.div>
 
           </form>
 
-      </div>
+      </motion.div>
     </div>
   );
 };

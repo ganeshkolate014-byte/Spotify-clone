@@ -19,7 +19,11 @@ const listVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0 }
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { type: "tween", ease: "easeOut", duration: 0.2 }
+  }
 };
 
 export const LikedSongs: React.FC = () => {
@@ -43,11 +47,6 @@ export const LikedSongs: React.FC = () => {
     if (likedSongs.length > 0) {
       playSong(likedSongs[0], likedSongs);
     }
-  };
-
-  const handleDownloadClick = (e: React.MouseEvent, song: Song) => {
-      e.stopPropagation();
-      setDownloadSong(song);
   };
 
   const filteredSongs = likedSongs.filter(s => 
@@ -85,7 +84,7 @@ export const LikedSongs: React.FC = () => {
             <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
                 className="w-[180px] h-[180px] md:w-[230px] md:h-[230px] bg-gradient-to-br from-[#450af5] to-[#8e8ee5] flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.4)] rounded-md shrink-0"
             >
                 <Heart size={80} fill="white" className="text-white drop-shadow-md" />
@@ -96,7 +95,7 @@ export const LikedSongs: React.FC = () => {
                 <motion.h1 
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
+                    transition={{ delay: 0.1, ease: "easeOut" }}
                     className="text-4xl md:text-7xl lg:text-8xl font-black text-white tracking-tighter leading-none drop-shadow-sm truncate py-2"
                 >
                     Liked Songs
@@ -208,22 +207,8 @@ export const LikedSongs: React.FC = () => {
                                 {song.album?.name || "Single"}
                             </span>
 
-                            {/* Actions / Duration */}
-                            <div className="flex items-center justify-end gap-3 min-w-[100px]">
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); toggleLike(song); }}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[#1DB954] hover:scale-110"
-                                    title="Remove from Liked"
-                                >
-                                    <Heart size={16} fill="#1DB954" />
-                                </button>
-                                <button 
-                                    onClick={(e) => handleDownloadClick(e, song)}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[#B3B3B3] hover:text-white hover:scale-110"
-                                    title="Download"
-                                >
-                                    <Download size={16} />
-                                </button>
+                            {/* Actions / Duration - Removed Heart/Download */}
+                            <div className="flex items-center justify-end gap-3 min-w-[50px]">
                                 <span className="text-sm text-[#B3B3B3] font-mono w-10 text-right">
                                     {Math.floor(parseInt(song.duration) / 60)}:{(parseInt(song.duration) % 60).toString().padStart(2, '0')}
                                 </span>

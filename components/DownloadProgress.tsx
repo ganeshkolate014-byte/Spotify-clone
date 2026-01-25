@@ -23,7 +23,7 @@ export const DownloadProgress: React.FC = () => {
                 initial={{ y: 50, opacity: 0, scale: 0.9 }}
                 animate={{ y: 0, opacity: 1, scale: 1 }}
                 exit={{ y: 50, opacity: 0, scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                transition={{ type: "tween", duration: 0.3 }}
                 className="bg-[#121212]/90 backdrop-blur-xl border border-white/10 rounded-full pl-2 pr-6 py-2 shadow-2xl flex items-center gap-4 min-w-[280px]"
             >
                 {/* Album Art & Progress Circle */}

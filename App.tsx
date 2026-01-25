@@ -29,10 +29,10 @@ import { WifiOff } from 'lucide-react';
 const PageTransition: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 15, scale: 0.99 }}
+      initial={{ opacity: 0, y: 10, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.99 }}
-      transition={{ type: "spring", stiffness: 300, damping: 28 }}
+      exit={{ opacity: 0, y: -5, scale: 0.99 }}
+      transition={{ type: "tween", ease: "easeInOut", duration: 0.3 }}
       className="h-full w-full"
     >
       {children}
@@ -94,6 +94,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 initial={{ y: -50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -50, opacity: 0 }}
+                transition={{ type: "tween", duration: 0.3 }}
                 className="absolute top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-1 border-b border-white/10"
               >
                   <div className="flex items-center gap-2 text-xs font-bold text-[#B3B3B3]">
@@ -116,7 +117,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       {!isFullScreenPage && <DownloadProgress />}
       {!isFullScreenPage && <Player />}
-      {!isFullScreenPage && <BottomNav />}
+      <AnimatePresence>
+        {!isFullScreenPage && <BottomNav />}
+      </AnimatePresence>
     </div>
   );
 };

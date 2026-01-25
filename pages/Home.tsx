@@ -26,8 +26,8 @@ const itemVariants = {
 
 // Skeleton Component
 const SkeletonCard: React.FC<{ round?: boolean }> = ({ round = false }) => (
-  <div className="bg-[#181818]/60 p-3 rounded-xl w-[160px] md:w-[180px] shrink-0 border border-white/5 animate-pulse">
-    <div className={`w-full aspect-square mb-3 bg-white/10 ${round ? 'rounded-full' : 'rounded-lg'}`}></div>
+  <div className="bg-[#181818]/60 p-4 rounded-[24px] w-[160px] md:w-[180px] shrink-0 border border-white/5 animate-pulse">
+    <div className={`w-full aspect-square mb-3 bg-white/10 ${round ? 'rounded-full' : 'rounded-[16px]'}`}></div>
     <div className="flex flex-col gap-2">
       <div className="h-4 bg-white/10 rounded w-3/4"></div>
       <div className="h-3 bg-white/5 rounded w-1/2"></div>
@@ -36,9 +36,9 @@ const SkeletonCard: React.FC<{ round?: boolean }> = ({ round = false }) => (
 );
 
 const SkeletonShortcut: React.FC = () => (
-  <div className="glass-card flex items-center gap-0 h-[48px] overflow-hidden rounded-[4px] bg-[#2A2A2A] animate-pulse">
-     <div className="h-[48px] w-[48px] bg-white/10 shrink-0"></div>
-     <div className="flex-1 px-2">
+  <div className="flex items-center gap-0 h-[56px] overflow-hidden rounded-[12px] bg-[#2A2A2A] animate-pulse">
+     <div className="h-full w-[56px] bg-white/10 shrink-0"></div>
+     <div className="flex-1 px-3">
          <div className="h-3 bg-white/10 rounded w-3/4"></div>
      </div>
   </div>
@@ -116,21 +116,21 @@ export const Home: React.FC = () => {
         whileHover={{ scale: 1.02, backgroundColor: '#3E3E3E' }}
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
-        className="glass-card flex items-center gap-0 cursor-pointer h-[48px] overflow-hidden group rounded-[4px] bg-[#2A2A2A] transition-colors"
+        className="flex items-center gap-0 cursor-pointer h-[56px] overflow-hidden group rounded-[12px] bg-[#2A2A2A] transition-colors shadow-sm"
     >
         {specialType === 'liked' ? (
-            <div className="h-full w-[48px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 opacity-100">
-                <svg role="img" height="18" width="18" aria-hidden="true" viewBox="0 0 24 24" fill="white"><path d="M15.724 4.22A4.313 4.313 0 0 0 12.192.814a4.269 4.269 0 0 0-3.622 1.13.837.837 0 0 1-1.14 0 4.272 4.272 0 0 0-6.21 5.855l5.916 7.05a1.128 1.128 0 0 0 1.727 0l5.916-7.05a4.228 4.228 0 0 0 .945-3.577z"></path></svg>
+            <div className="h-full w-[56px] bg-gradient-to-br from-[#450af5] to-[#c4efd9] flex items-center justify-center shrink-0 opacity-100">
+                <svg role="img" height="24" width="24" aria-hidden="true" viewBox="0 0 24 24" fill="white"><path d="M15.724 4.22A4.313 4.313 0 0 0 12.192.814a4.269 4.269 0 0 0-3.622 1.13.837.837 0 0 1-1.14 0 4.272 4.272 0 0 0-6.21 5.855l5.916 7.05a1.128 1.128 0 0 0 1.727 0l5.916-7.05a4.228 4.228 0 0 0 .945-3.577z"></path></svg>
             </div>
         ) : specialType === 'whyus' ? (
-            <div className="h-full w-[48px] bg-gradient-to-br from-[#1DB954] to-emerald-700 flex items-center justify-center shrink-0 opacity-100">
-                <Rocket size={20} className="text-white" />
+            <div className="h-full w-[56px] bg-gradient-to-br from-[#1DB954] to-emerald-700 flex items-center justify-center shrink-0 opacity-100">
+                <Rocket size={24} className="text-white" />
             </div>
         ) : (
-            <img src={image} className="h-[48px] w-[48px] object-cover shrink-0 shadow-none" alt=""/>
+            <img src={image} className="h-full w-[56px] object-cover shrink-0 shadow-none" alt=""/>
         )}
-        <div className="flex flex-1 items-center justify-between pr-2 pl-2 overflow-hidden">
-             <span className={`font-bold text-[11px] md:text-[13px] leading-tight line-clamp-2 pr-1 ${specialType === 'whyus' ? 'text-[#1DB954]' : 'text-white'}`}>{title}</span>
+        <div className="flex flex-1 items-center justify-between pr-3 pl-3 overflow-hidden">
+             <span className={`font-bold text-[13px] leading-tight line-clamp-2 ${specialType === 'whyus' ? 'text-[#1DB954]' : 'text-white'}`}>{title}</span>
         </div>
     </motion.div>
   );
@@ -156,13 +156,13 @@ export const Home: React.FC = () => {
     >
       
       {/* Top Header */}
-      <div className={`px-4 flex items-center justify-start gap-3 sticky top-0 z-50 py-3 transition-colors duration-200 ${isScrolled ? 'bg-black/95 border-b border-[#282828] shadow-lg' : 'bg-black border-b border-transparent'}`}>
+      <div className={`px-4 flex items-center justify-start gap-4 sticky top-0 z-50 py-3 transition-colors duration-200 ${isScrolled ? 'bg-black/95 border-b border-[#282828] shadow-lg' : 'bg-black border-b border-transparent'}`}>
          {/* Profile Icon */}
          <motion.div 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleProfileClick}
-            className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#1DB954] to-[#1ed760] flex items-center justify-center font-bold text-black text-sm shrink-0 cursor-pointer overflow-hidden shadow-md"
+            className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#1DB954] to-[#1ed760] flex items-center justify-center font-bold text-black text-sm shrink-0 cursor-pointer overflow-hidden shadow-md border-2 border-black"
          >
              {currentUser && currentUser.image ? (
                  <img src={currentUser.image} alt="Profile" className="w-full h-full object-cover" />
@@ -171,17 +171,18 @@ export const Home: React.FC = () => {
              )}
          </motion.div>
          
-         {/* Filter Chips */}
-         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mask-linear-fade">
+         {/* Filter Chips - Google Style */}
+         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar mask-linear-fade">
              {!isOfflineMode && (
                 <>
-                    <motion.button whileTap={{ scale: 0.95 }} className="px-4 py-1.5 bg-[#1DB954] text-black rounded-full text-[13px] font-medium transition-transform shadow-sm whitespace-nowrap">All</motion.button>
-                    <motion.button whileTap={{ scale: 0.95 }} className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Music</motion.button>
+                    <motion.button whileTap={{ scale: 0.95 }} className="px-5 py-2 bg-[#1DB954] text-black rounded-full text-[14px] font-bold transition-transform shadow-sm whitespace-nowrap">All</motion.button>
+                    <motion.button whileTap={{ scale: 0.95 }} className="px-5 py-2 bg-[#2A2A2A] text-white rounded-full text-[14px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Music</motion.button>
+                    <motion.button whileTap={{ scale: 0.95 }} className="px-5 py-2 bg-[#2A2A2A] text-white rounded-full text-[14px] font-medium whitespace-nowrap border border-transparent hover:bg-[#333]">Podcasts</motion.button>
                 </>
              )}
              {isOfflineMode && (
-                 <motion.button className="px-4 py-1.5 bg-[#2A2A2A] text-white rounded-full text-[13px] font-medium flex items-center gap-2">
-                     <WifiOff size={14} /> Offline Mode
+                 <motion.button className="px-5 py-2 bg-[#2A2A2A] text-white rounded-full text-[14px] font-medium flex items-center gap-2">
+                     <WifiOff size={16} /> Offline Mode
                  </motion.button>
              )}
          </div>
@@ -190,10 +191,9 @@ export const Home: React.FC = () => {
       {/* Grid Shortcuts */}
       <motion.div variants={itemVariants} className="px-4 mt-2">
           <h2 className="text-2xl font-bold text-white mb-4">{isOfflineMode ? "Your Downloads" : "Jump back in"}</h2>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <ShortcutCard title="Liked Songs" specialType="liked" onClick={() => navigate('/library')} />
             
-            {/* NEW WHY US CARD */}
             <ShortcutCard title="Why Vibestream?" specialType="whyus" onClick={() => navigate('/why-us')} />
             
             {!isOfflineMode && isLoading ? (

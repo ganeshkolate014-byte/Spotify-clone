@@ -4,12 +4,9 @@ import { api, getAudioUrl, getOfflineAudioUrl, getImageUrl } from '../services/a
 
 export const AudioController: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  // Ref to suppress pause events during source change to prevent state thrashing
-  const isSwitchingTrack = useRef(false);
   
   const { 
     currentSong, 
-    isPlaying, 
     setIsPlaying, 
     setIsBuffering, 
     nextSong, 
@@ -28,30 +25,6 @@ export const AudioController: React.FC = () => {
         setAudioElement(audioRef.current);
     }
   }, [setAudioElement]);
-
-  // Handle Playback State (Play/Pause)
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const attemptPlay = async () => {
-        try {
-            await audio.play();
-        } catch (e: any) {
-            // AbortError is expected when we interrupt play with pause/load. Ignore it.
-            if (e.name !== 'AbortError') {
-                console.warn("Play blocked or interrupted", e);
-                setIsPlaying(false);
-            }
-        }
-    };
-
-    if (isPlaying && audio.paused) {
-        attemptPlay();
-    } else if (!isPlaying && !audio.paused) {
-        audio.pause();
-    }
-  }, [isPlaying, setIsPlaying]);
 
   // Handle Source Loading
   useEffect(() => {
@@ -95,36 +68,27 @@ export const AudioController: React.FC = () => {
         if (url && audioRef.current) {
             // Avoid reloading if same src
             if (audioRef.current.src === url) {
+                 // Check if it was paused but state says playing (desync fix)
                  if (usePlayerStore.getState().isPlaying && audioRef.current.paused) {
                       audioRef.current.play().catch(() => {});
                  }
                  return;
             }
 
-            // Flag that we are switching tracks to prevent onPause from triggering
-            isSwitchingTrack.current = true;
-
             const shouldPlay = usePlayerStore.getState().isPlaying;
             audioRef.current.src = url;
-            // Note: src assignment triggers loading automatically
             
             if (shouldPlay) {
-                 try {
-                     await audioRef.current.play();
-                 } catch(e: any) {
+                 audioRef.current.play().catch(e => {
+                     // AbortError is normal during rapid skips
                      if (e.name !== 'AbortError') {
                          console.warn("Autoplay blocked", e);
                          if (!isCancelled) setIsPlaying(false);
                      }
-                 }
+                 });
             } else {
                  setIsPlaying(false);
             }
-
-            // Reset switching flag after a short delay
-            setTimeout(() => {
-                isSwitchingTrack.current = false;
-            }, 200);
         }
     };
 
@@ -151,29 +115,47 @@ export const AudioController: React.FC = () => {
       ]
     });
 
-    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
-    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+    // We use the store actions to ensure UI updates correctly
+    navigator.mediaSession.setActionHandler('play', () => usePlayerStore.getState().togglePlay());
+    navigator.mediaSession.setActionHandler('pause', () => usePlayerStore.getState().togglePlay());
     navigator.mediaSession.setActionHandler('previoustrack', prevSong);
     navigator.mediaSession.setActionHandler('nexttrack', nextSong);
     
-  }, [currentSong, setIsPlaying, prevSong, nextSong]);
+  }, [currentSong, prevSong, nextSong]);
 
   const handleTimeUpdate = () => {
-      // PERFORMANCE: Only update store if duration changes significantly
+      // Check duration validity regularly
       if (audioRef.current) {
           const dur = audioRef.current.duration;
-          if (dur && dur !== Infinity && !isNaN(dur) && Math.abs(dur - duration) > 1) {
+          // Update if store duration is invalid (0) or different enough
+          if (dur && dur !== Infinity && !isNaN(dur) && (duration === 0 || Math.abs(dur - duration) > 0.5)) {
+              setDuration(dur);
+          }
+      }
+  };
+  
+  const handleDurationChange = () => {
+      if (audioRef.current) {
+          const dur = audioRef.current.duration;
+          if (dur && dur !== Infinity && !isNaN(dur)) {
               setDuration(dur);
           }
       }
   };
 
   const handlePause = () => {
-      // Ignore pause events caused by track switching
-      if (isSwitchingTrack.current) return;
-      
-      if (isPlaying && !audioRef.current?.seeking) {
-          setIsPlaying(false);
+     // Sync store if paused externally (e.g. bluetooth headset)
+     const store = usePlayerStore.getState();
+     if (store.isPlaying && !audioRef.current?.seeking) {
+         store.setIsPlaying(false);
+     }
+  };
+
+  const handlePlay = () => {
+      // Sync store if played externally
+      const store = usePlayerStore.getState();
+      if (!store.isPlaying) {
+          store.setIsPlaying(true);
       }
   };
 
@@ -182,13 +164,14 @@ export const AudioController: React.FC = () => {
         ref={audioRef}
         preload="auto"
         onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleTimeUpdate}
+        onLoadedMetadata={handleDurationChange}
+        onDurationChange={handleDurationChange}
         onEnded={nextSong}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
         onCanPlay={() => setIsBuffering(false)}
         onPause={handlePause}
-        onPlay={() => !isPlaying && setIsPlaying(true)}
+        onPlay={handlePlay}
         onError={(e) => {
             console.error("Audio playback error", e);
             setIsBuffering(false);

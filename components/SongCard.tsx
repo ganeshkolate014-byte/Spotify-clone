@@ -50,19 +50,19 @@ export const SongCard: React.FC<SongCardProps> = ({ item, onPlay, subtitle, roun
 
   return (
     <motion.div 
-      whileHover={{ y: -8 }}
+      whileHover={{ y: -5 }}
       whileTap={{ scale: 0.98 }}
-      initial={{ opacity: 0, scale: 0.9 }}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       onClick={handleClick}
-      className="group relative bg-[#181818]/60 backdrop-blur-sm hover:bg-[#282828] p-3 rounded-xl transition-colors cursor-pointer w-[160px] md:w-[180px] shrink-0 border border-white/5 hover:border-white/10"
+      className="group relative bg-[#181818] hover:bg-[#282828] p-4 rounded-[24px] transition-colors cursor-pointer w-[160px] md:w-[180px] shrink-0"
     >
-      <div className={`relative w-full aspect-square mb-3 shadow-lg ${round ? 'rounded-full' : 'rounded-lg'} overflow-hidden`}>
+      <div className={`relative w-full aspect-square mb-3 shadow-lg ${round ? 'rounded-full' : 'rounded-[16px]'} overflow-hidden`}>
         <img 
           src={imageUrl} 
           alt={displayTitle} 
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          className="w-full h-full object-cover"
           loading="lazy"
         />
         {/* Play Button Overlay */}
@@ -77,7 +77,7 @@ export const SongCard: React.FC<SongCardProps> = ({ item, onPlay, subtitle, roun
           </motion.button>
         )}
       </div>
-      <div className="flex flex-col gap-0.5 min-h-[48px]">
+      <div className="flex flex-col gap-1 min-h-[48px]">
         <h3 className="text-white font-bold truncate text-[15px] mb-1 leading-tight group-hover:underline decoration-1 underline-offset-2">
           {displayTitle}
         </h3>

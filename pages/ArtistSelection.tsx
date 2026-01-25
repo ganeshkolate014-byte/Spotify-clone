@@ -118,7 +118,7 @@ export const ArtistSelection: React.FC = () => {
                               onClick={() => handleToggle(artist)}
                               initial={{ opacity: 0, scale: 0.9 }}
                               animate={{ opacity: 1, scale: 1 }}
-                              transition={{ duration: 0.2 }}
+                              transition={{ duration: 0.2, ease: "easeOut" }}
                           >
                               <div className="relative w-24 h-24 md:w-32 md:h-32">
                                   <motion.img 
@@ -126,6 +126,7 @@ export const ArtistSelection: React.FC = () => {
                                       alt={artist.name} 
                                       className={`w-full h-full object-cover rounded-full shadow-lg transition-all duration-300 ${isSelected ? 'brightness-50' : 'brightness-100 group-hover:brightness-90'}`}
                                       animate={{ scale: isSelected ? 0.9 : 1 }}
+                                      transition={{ duration: 0.2, ease: "easeOut" }}
                                   />
                                   <AnimatePresence>
                                     {isSelected && (
@@ -133,6 +134,7 @@ export const ArtistSelection: React.FC = () => {
                                             initial={{ opacity: 0, scale: 0 }} 
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0 }}
+                                            transition={{ duration: 0.2, ease: "backOut" }}
                                             className="absolute top-0 right-0 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md z-10"
                                         >
                                             <CheckCircle2 size={20} className="text-[#1DB954] fill-white bg-white rounded-full" />
@@ -146,6 +148,7 @@ export const ArtistSelection: React.FC = () => {
                                         className="absolute inset-0 rounded-full border-[3px] border-[#1DB954]"
                                         initial={{ opacity: 0, scale: 1.1 }}
                                         animate={{ opacity: 1, scale: 1.05 }}
+                                        transition={{ duration: 0.2, ease: "easeOut" }}
                                       />
                                   )}
                               </div>
@@ -161,12 +164,14 @@ export const ArtistSelection: React.FC = () => {
 
       {/* Floating Done Button */}
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black/90 to-transparent z-40 flex justify-center">
-          <button 
+          <motion.button 
              onClick={handleDone}
-             className="bg-white text-black font-bold text-base py-3 px-12 rounded-full hover:scale-105 active:scale-95 transition-transform shadow-[0_4px_20px_rgba(255,255,255,0.2)]"
+             whileHover={{ scale: 1.05 }}
+             whileTap={{ scale: 0.95 }}
+             className="bg-white text-black font-bold text-base py-3 px-12 rounded-full shadow-[0_4px_20px_rgba(255,255,255,0.2)]"
           >
               Done
-          </button>
+          </motion.button>
       </div>
     </div>
   );

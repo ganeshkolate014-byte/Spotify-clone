@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Song, UserPlaylist, User, Friend, ChatMessage, PartySession, Artist, SearchResult } from '../types';
 import { authService } from '../services/auth';
-import { downloadSongWithProgress, OfflineStorage } from '../services/api';
+import { downloadSongWithProgress, OfflineStorage, api } from '../services/api';
 
 interface PlayerState {
   isPlaying: boolean;
@@ -15,7 +15,10 @@ interface PlayerState {
   favoriteArtists: Artist[];
   userPlaylists: UserPlaylist[];
   volume: number;
-  isShuffling: boolean;
+  
+  // Shuffle State
+  shuffleMode: 'off' | 'on' | 'smart';
+  
   streamingQuality: 'low' | 'normal' | 'high';
   musicSource: 'local' | 'youtube' | 'both';
   
@@ -49,11 +52,13 @@ interface PlayerState {
   setDuration: (duration: number) => void;
   playSong: (song: Song, newQueue?: Song[]) => void;
   togglePlay: () => void;
+  seek: (time: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setIsBuffering: (isBuffering: boolean) => void;
   setFullScreen: (isFull: boolean) => void;
   nextSong: () => void;
   prevSong: () => void;
+  toggleShuffle: () => void;
   addToQueue: (song: Song) => void;
   setQueue: (songs: Song[]) => void;
   setVolume: (val: number) => void;
@@ -106,7 +111,7 @@ export const usePlayerStore = create<PlayerState>()(
       favoriteArtists: [],
       userPlaylists: [],
       volume: 1,
-      isShuffling: false,
+      shuffleMode: 'off',
       currentUser: null,
       streamingQuality: 'high',
       musicSource: 'both',
@@ -151,7 +156,30 @@ export const usePlayerStore = create<PlayerState>()(
         }));
       },
 
-      togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
+      togglePlay: () => {
+          const { isPlaying, audioElement } = get();
+          const nextState = !isPlaying;
+          set({ isPlaying: nextState });
+
+          // Direct Audio Control for responsiveness
+          if (audioElement) {
+              if (nextState) {
+                  audioElement.play().catch(e => {
+                      console.error("Play failed", e);
+                      set({ isPlaying: false });
+                  });
+              } else {
+                  audioElement.pause();
+              }
+          }
+      },
+
+      seek: (time) => {
+          const { audioElement, duration } = get();
+          if (!audioElement) return;
+          const safeTime = Math.max(0, Math.min(time, duration));
+          audioElement.currentTime = safeTime;
+      },
       
       setIsPlaying: (isPlaying) => {
           set({ isPlaying });
@@ -164,25 +192,83 @@ export const usePlayerStore = create<PlayerState>()(
       setIsBuffering: (isBuffering) => set({ isBuffering }),
       setFullScreen: (isFullScreen) => set({ isFullScreen }),
 
+      toggleShuffle: () => {
+          const { shuffleMode, currentSong } = get();
+          const nextMode = shuffleMode === 'off' ? 'on' : shuffleMode === 'on' ? 'smart' : 'off';
+          
+          set({ shuffleMode: nextMode });
+
+          // AI Smart Shuffle Logic
+          if (nextMode === 'smart' && currentSong) {
+              api.getRecommendations(currentSong.id).then(recs => {
+                  const { queue } = get();
+                  // Ensure we don't add duplicate songs that are already in queue
+                  // "selected suggestions mat dena"
+                  const currentIds = new Set(queue.map(s => s.id));
+                  const uniqueRecs = recs.filter(s => !currentIds.has(s.id));
+                  
+                  if (uniqueRecs.length > 0) {
+                      set({ queue: [...queue, ...uniqueRecs] });
+                  }
+              }).catch(e => console.error("AI Shuffle Error", e));
+          }
+      },
+
       nextSong: () => {
-        const { queue, currentSong, isShuffling } = get();
+        const { queue, currentSong, shuffleMode } = get();
         if (!currentSong) return;
+        
+        // Mode: 'off' -> Sequential
+        // Mode: 'on' (Standard) -> Random
+        // Mode: 'smart' (AI) -> Random/Sequential from enriched queue. 
+        // For UI clarity, Smart Shuffle here behaves like Shuffle (Random) but with a bigger pool of AI songs
+        
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-        let nextIndex = isShuffling ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
-        if (nextIndex < queue.length) get().playSong(queue[nextIndex]);
-        else set({ isPlaying: false });
+        
+        if (shuffleMode !== 'off') {
+            // Random Shuffle Logic
+            const nextIndex = Math.floor(Math.random() * queue.length);
+            // Try to avoid repeating immediate song
+            if (queue.length > 1 && queue[nextIndex].id === currentSong.id) {
+                // Retry once
+                const retryIndex = Math.floor(Math.random() * queue.length);
+                get().playSong(queue[retryIndex]);
+            } else {
+                get().playSong(queue[nextIndex]);
+            }
+        } else {
+            // Sequential
+            if (currentIndex + 1 < queue.length) {
+                get().playSong(queue[currentIndex + 1]);
+            } else {
+                set({ isPlaying: false });
+            }
+        }
       },
 
       prevSong: () => {
-        const { queue, currentSong } = get();
+        const { queue, currentSong, audioElement } = get();
         if (!currentSong) return;
+        
+        // If > 3 seconds in, just restart song
+        if (audioElement && audioElement.currentTime > 3) {
+            audioElement.currentTime = 0;
+            return;
+        }
+
         const currentIndex = queue.findIndex(s => s.id === currentSong.id);
         if (currentIndex - 1 >= 0) get().playSong(queue[currentIndex - 1]);
       },
 
       addToQueue: (song) => set((state) => ({ queue: [...state.queue, song] })),
       setQueue: (songs) => set({ queue: songs }),
-      setVolume: (volume) => set({ volume }),
+      
+      setVolume: (volume) => {
+          set({ volume });
+          const { audioElement } = get();
+          if (audioElement) audioElement.volume = volume;
+      },
+
       setStreamingQuality: (quality) => set({ streamingQuality: quality }),
       setMusicSource: (source) => set({ musicSource: source }),
 
@@ -524,8 +610,9 @@ export const usePlayerStore = create<PlayerState>()(
         currentUser: state.currentUser,
         streamingQuality: state.streamingQuality,
         musicSource: state.musicSource,
-        recentSearches: state.recentSearches, // Persist recent searches
+        recentSearches: state.recentSearches,
         downloadedSongIds: state.downloadedSongIds,
+        shuffleMode: state.shuffleMode, // Persist shuffle mode
       }), 
     }
   )
